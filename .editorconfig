@@ -1,4 +1,6 @@
 ; https://editorconfig.org
+; 相当于这是对编辑器的设置信息
+; 对常用的tab和换行的缩进信息
 
 root = true
 
