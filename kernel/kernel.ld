@@ -14,6 +14,9 @@ SECTIONS
   /*
    * text段用于存储可执行指令和数据
    * .text .text.*表示通配所有的这样段
+   * .表示0x1000地址4096对齐
+   * trampoline等于当前对齐的地址
+   * trampsec表示将这个section放在其中
    */
   .text : {
     *(.text .text.*)

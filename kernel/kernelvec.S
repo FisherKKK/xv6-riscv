@@ -89,36 +89,56 @@ kernelvec:
 
         #
         # machine-mode timer interrupt.
+        # 机器模式下Timer中断的处理函数
         #
 .globl timervec
 .align 4
 timervec:
         # start.c has set up the memory that mscratch points to:
+        # 64个字节为单位的数组, 0-8 8-16 16-24是保留寄存器区域
+        # 24-32是CMP寄存器对应的位置
+        # 32-40是inter对应的位置
         # scratch[0,8,16] : register save area.
         # scratch[24] : address of CLINT's MTIMECMP register.
         # scratch[32] : desired interval between interrupts.
         
+        # 交换a0和mscratch中的值
         csrrw a0, mscratch, a0
+        # 如下就是保留寄存器的值:
+        # a1 -> a0 + 0
         sd a1, 0(a0)
+        # a2 -> a0 + 8
         sd a2, 8(a0)
+        # a3 -> a0 + 16
         sd a3, 16(a0)
 
         # schedule the next timer interrupt
         # by adding interval to mtimecmp.
+        # a0 + 24 -> a1 (a1 = CMP对应的值)
         ld a1, 24(a0) # CLINT_MTIMECMP(hart)
+        # a0 + 32 -> a2 (a2 = 中断间隔)
         ld a2, 32(a0) # interval
+        # a1 + 0 -> a3  (a3 = CMP)
         ld a3, 0(a1)
+        # a3 + a2 -> a3 (a3 = CMP + Interval)
         add a3, a3, a2
+        # a3 -> a1 + 0 (a1 = CMP + Interval = CMP)
+        # 也就是说这一步更新了Timer下一次的时间
         sd a3, 0(a1)
 
         # arrange for a supervisor software interrupt
         # after this handler returns.
+        # 将2 -> a1, 相当于返回值, 现在编程软中断
         li a1, 2
         csrw sip, a1
 
+        # a0 + 16 -> a3
+        # a0 + 8  -> a2
+        # a0 + 0  -> a1
         ld a3, 16(a0)
         ld a2, 8(a0)
         ld a1, 0(a0)
+        # a0 <--> mscratch
         csrrw a0, mscratch, a0
-
+        # 从M模式返回到S模式
         mret
