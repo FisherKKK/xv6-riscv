@@ -30,6 +30,8 @@ struct inode {
 };
 
 // map major device number to device functions.
+// 每个设备对应的RW函数, 如果定义一个数组, 通过设备号索引
+// 那么就能得到每个设备的RW函数
 struct devsw {
   int (*read)(int, uint64, int);
   int (*write)(int, uint64, int);

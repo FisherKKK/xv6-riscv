@@ -60,6 +60,7 @@ printptr(uint64 x)
 }
 
 // Print to the console. only understands %d, %x, %p, %s.
+// 打印到控制台
 void
 printf(char *fmt, ...)
 {
@@ -127,6 +128,9 @@ panic(char *s)
     ;
 }
 
+
+// 初始化printf函数
+// 初始化锁以及locking
 void
 printfinit(void)
 {

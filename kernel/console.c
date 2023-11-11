@@ -75,6 +75,8 @@ consolewrite(int user_src, uint64 src, int n)
 // copy (up to) a whole input line to dst.
 // user_dist indicates whether dst is a user
 // or kernel address.
+// user读控制台将会转交到这个函数
+// user_dst标识dst是在内核还是用户空间
 //
 int
 consoleread(int user_dst, uint64 dst, int n)
@@ -83,8 +85,8 @@ consoleread(int user_dst, uint64 dst, int n)
   int c;
   char cbuf;
 
-  target = n;
-  acquire(&cons.lock);
+  target = n;          // n表示读入的最大大小
+  acquire(&cons.lock); // 获取控制台的锁
   while(n > 0){
     // wait until interrupt handler has put some
     // input into cons.buffer.
@@ -178,15 +180,20 @@ consoleintr(int c)
   release(&cons.lock);
 }
 
+
+// 初始化控制台, 在此之前无法进行控制台输出
 void
 consoleinit(void)
 {
+  // 初始化控制台对应的锁
   initlock(&cons.lock, "cons");
 
+  // 初始化uart硬件
   uartinit();
 
   // connect read and write system calls
   // to consoleread and consolewrite.
+  // 将CONSOLE的读写函数进行设备绑定
   devsw[CONSOLE].read = consoleread;
   devsw[CONSOLE].write = consolewrite;
 }
