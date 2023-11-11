@@ -16,40 +16,52 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 extern char trampoline[]; // trampoline.S
 
 // Make a direct-map page table for the kernel.
+// 对于内核来说, 它是直接内存映射
+// 也就是说它直接就看到物理内存
 pagetable_t
 kvmmake(void)
 {
   pagetable_t kpgtbl;
 
+  // 分配一个页作为内核页表
   kpgtbl = (pagetable_t) kalloc();
+  // 重置页表内容
   memset(kpgtbl, 0, PGSIZE);
 
   // uart registers
+  // 映射uart寄存器
   kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
   // virtio mmio disk interface
+  // 映射virtio mmio disk接口
   kvmmap(kpgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
   // PLIC
+  // 映射PLIC
   kvmmap(kpgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
 
   // map kernel text executable and read-only.
+  // 映射kernel可执行文件和read-only文件
   kvmmap(kpgtbl, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
 
   // map kernel data and the physical RAM we'll make use of.
+  // 映射内核数据和物理RAM
   kvmmap(kpgtbl, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
 
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
+  // 映射跳板页
   kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
   // allocate and map a kernel stack for each process.
+  // 为每一个映射内核页表
   proc_mapstacks(kpgtbl);
   
   return kpgtbl;
 }
 
 // Initialize the one kernel_pagetable
+// 初始化内核页表
 void
 kvminit(void)
 {
@@ -128,6 +140,8 @@ walkaddr(pagetable_t pagetable, uint64 va)
 // add a mapping to the kernel page table.
 // only used when booting.
 // does not flush TLB or enable paging.
+// 在内核页表中增加一个映射
+//? 仅仅在boot的时候启用, 不会Flush TLB或者启用分页?
 void
 kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 {
@@ -148,7 +162,9 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   if(size == 0)
     panic("mappages: size");
   
+  // 需要映射的起始地址
   a = PGROUNDDOWN(va);
+  // 映射的最后地址
   last = PGROUNDDOWN(va + size - 1);
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)

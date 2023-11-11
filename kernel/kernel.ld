@@ -58,5 +58,5 @@ SECTIONS
     *(.bss .bss.*)
   }
 
-  PROVIDE(end = .);
+  PROVIDE(end = .); /* 在这个地方定义了end的地址, 也就是内核加载完成之后的地址 */
 }
