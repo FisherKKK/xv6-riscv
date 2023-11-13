@@ -17,6 +17,7 @@ SECTIONS
    * .表示0x1000地址4096对齐
    * trampoline等于当前对齐的地址
    * trampsec表示将这个section放在其中
+   * etext这里标识了内核data的end
    */
   .text : {
     *(.text .text.*)

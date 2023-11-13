@@ -29,6 +29,7 @@ struct spinlock wait_lock;
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
+// 为每一个进程映射一个内核栈
 void
 proc_mapstacks(pagetable_t kpgtbl)
 {
@@ -38,7 +39,8 @@ proc_mapstacks(pagetable_t kpgtbl)
     char *pa = kalloc();
     if(pa == 0)
       panic("kalloc");
-    uint64 va = KSTACK((int) (p - proc));
+    uint64 va = KSTACK((int) (p - proc)); // 内核栈的虚拟地址
+    // 为内核页表映射KSTACK和pa
     kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   }
 }

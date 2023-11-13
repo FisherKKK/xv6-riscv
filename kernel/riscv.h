@@ -345,8 +345,10 @@ typedef uint64 *pagetable_t; // 512 PTEs
 #define PTE_U (1L << 4) // user can access
 
 // shift a physical address to the right place for a PTE.
+// 清除低12位, 右移10位作为flag
 #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
 
+// 将一个PTE转换为物理地址
 #define PTE2PA(pte) (((pte) >> 10) << 12)
 
 #define PTE_FLAGS(pte) ((pte) & 0x3FF)
@@ -354,6 +356,7 @@ typedef uint64 *pagetable_t; // 512 PTEs
 // extract the three 9-bit page table indices from a virtual address.
 #define PXMASK          0x1FF // 9 bits
 #define PXSHIFT(level)  (PGSHIFT+(9*(level)))
+// 这里的px本质上就是 9(2) + 9(1) + 9(0) + 12(offset)
 #define PX(level, va) ((((uint64) (va)) >> PXSHIFT(level)) & PXMASK)
 
 // one beyond the highest possible virtual address.

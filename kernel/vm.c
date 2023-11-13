@@ -22,6 +22,11 @@ pagetable_t
 kvmmake(void)
 {
   pagetable_t kpgtbl;
+  //! 这里即使是内核也需要进行映射, 因为RISCV操作的是虚拟地址
+  //! 也就是说RISCV底层支持分页操作
+  //! 因为RISCV设计的时候采用三层页表, 那么CPU在读取内存的时候
+  //! 需要载入三个Page Entry, 为了避免带来的性能损耗
+  //! 采用TLB缓存页表项
 
   // 分配一个页作为内核页表
   kpgtbl = (pagetable_t) kalloc();
@@ -54,7 +59,7 @@ kvmmake(void)
   kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
   // allocate and map a kernel stack for each process.
-  // 为每一个映射内核页表
+  // 为每一个进程映射内核页表
   proc_mapstacks(kpgtbl);
   
   return kpgtbl;
@@ -94,23 +99,37 @@ kvminithart()
 //   21..29 -- 9 bits of level-1 index.
 //   12..20 -- 9 bits of level-0 index.
 //    0..11 -- 12 bits of byte offset within the page.
+// walk本质上通过遍历的方式找到页表中va的PTE地址
+// 但是RISCV本质上是三层页表:
+// EXT | L2 | L1 | L0 | Offset
+//     | 9  | 9  | 9  | 12
+// L2|page_table -> (PPN1 + flag)
+// L1|PPN1       -> (PPN2 + flag)
+// L0|PPN2       -> (Offset -> Psy) 
 pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
   if(va >= MAXVA)
     panic("walk");
-
+  // 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
     if(*pte & PTE_V) {
+      // 这一步本质上是判断它是否是一个合法的, 从而决定要不要进行分配
+      // 这里表示是一个合法的物理页, 转换为对应的物理地址
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
+      // 分配一个页表
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
+      // 初始化
       memset(pagetable, 0, PGSIZE);
+      // 将这个物理地址转换为PTE: 
+      // 这里就可以理解了2 ^ 12次方刚好是4096每一个页的大小
       *pte = PA2PTE(pagetable) | PTE_V;
     }
   }
+  // 这里本质上就是返回PTE0
   return &pagetable[PX(0, va)];
 }
 
@@ -153,6 +172,7 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 // physical addresses starting at pa. va and size might not
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
+// 对于从va -> va + size的所有地址进行映射
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 {
@@ -171,6 +191,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
       return -1;
     if(*pte & PTE_V)
       panic("mappages: remap");
+    // 这一步才是真正的映射
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;
