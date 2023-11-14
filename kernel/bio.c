@@ -33,21 +33,26 @@ struct {
   struct buf head;
 } bcache;
 
+
+// 初始化磁盘缓存
+// 这里本质上就是一个双向链表
 void
 binit(void)
 {
   struct buf *b;
 
+  // 初始化磁盘缓存块锁
   initlock(&bcache.lock, "bcache");
 
   // Create linked list of buffers
+  // 如下创建缓存的双向链表
   bcache.head.prev = &bcache.head;
   bcache.head.next = &bcache.head;
   for(b = bcache.buf; b < bcache.buf+NBUF; b++){
-    b->next = bcache.head.next;
+    b->next = bcache.head.next; // 将所有的buf插入双向链表当中
     b->prev = &bcache.head;
-    initsleeplock(&b->lock, "buffer");
-    bcache.head.next->prev = b;
+    initsleeplock(&b->lock, "buffer"); // 获取buff锁
+    bcache.head.next->prev = b; // 修改头节点对应的指针
     bcache.head.next = b;
   }
 }

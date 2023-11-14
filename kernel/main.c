@@ -27,12 +27,12 @@ main()
     trapinit();      // trap vectors,  陷阱向量初始化
     trapinithart();  // install kernel trap vector, 为内核安装trap vector
     plicinit();      // set up interrupt controller, 设置平台中断控制器
-    plicinithart();  // ask PLIC for device interrupts
-    binit();         // buffer cache
-    iinit();         // inode table
-    fileinit();      // file table
-    virtio_disk_init(); // emulated hard disk
-    userinit();      // first user process
+    plicinithart();  // ask PLIC for device interrupts, 为每个CPU初始化plic
+    binit();         // buffer cache, 初始化buf
+    iinit();         // inode table, 初始化inode table
+    fileinit();      // file table, 初始化文件表
+    virtio_disk_init(); // emulated hard disk, 模拟硬盘
+    userinit();      // first user process, 初始化第一个用户进程
     __sync_synchronize();
     started = 1;
   } else {

@@ -17,6 +17,7 @@
 #include "virtio.h"
 
 // the address of virtio mmio register r.
+// 内存映射io对应的寄存器地址
 #define R(r) ((volatile uint32 *)(VIRTIO0 + (r)))
 
 static struct disk {
@@ -62,7 +63,7 @@ void
 virtio_disk_init(void)
 {
   uint32 status = 0;
-
+  // 初始化vdisk对应的锁
   initlock(&disk.vdisk_lock, "virtio_disk");
 
   if(*R(VIRTIO_MMIO_MAGIC_VALUE) != 0x74726976 ||
@@ -73,6 +74,7 @@ virtio_disk_init(void)
   }
   
   // reset device
+  // 重置设备
   *R(VIRTIO_MMIO_STATUS) = status;
 
   // set ACKNOWLEDGE status bit

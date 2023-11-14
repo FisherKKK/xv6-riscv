@@ -19,6 +19,7 @@ struct {
   struct file file[NFILE];
 } ftable;
 
+// 初始化文件表对应的锁
 void
 fileinit(void)
 {

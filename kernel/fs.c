@@ -178,13 +178,16 @@ struct {
   struct inode inode[NINODE];
 } itable;
 
+
+// inode初始化
 void
 iinit()
 {
   int i = 0;
-  
+  // 初始化itable锁
   initlock(&itable.lock, "itable");
   for(i = 0; i < NINODE; i++) {
+    // 初始化每一个inode对应的锁
     initsleeplock(&itable.inode[i].lock, "inode");
   }
 }

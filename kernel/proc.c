@@ -99,6 +99,7 @@ myproc(void)
   return p;
 }
 
+// 分配pid时需要保证原子性
 int
 allocpid()
 {
@@ -116,6 +117,7 @@ allocpid()
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
+// 通过循环在进程表中寻找一个空闲的进程
 static struct proc*
 allocproc(void)
 {
@@ -132,10 +134,12 @@ allocproc(void)
   return 0;
 
 found:
+  // 如果找到了, 分配新的pid
   p->pid = allocpid();
   p->state = USED;
 
   // Allocate a trapframe page.
+  // 分配一个陷阱页
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
     release(&p->lock);
@@ -143,6 +147,7 @@ found:
   }
 
   // An empty user page table.
+  // 为进程创建一个页表
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
     freeproc(p);
@@ -183,6 +188,8 @@ freeproc(struct proc *p)
 
 // Create a user page table for a given process, with no user memory,
 // but with trampoline and trapframe pages.
+// 为用户进程创建一个页表, 没有额外的内存空间
+// 但是保留了trampoline和trapframe
 pagetable_t
 proc_pagetable(struct proc *p)
 {
@@ -197,6 +204,9 @@ proc_pagetable(struct proc *p)
   // at the highest user virtual address.
   // only the supervisor uses it, on the way
   // to/from user space, so not PTE_U.
+  // 映射TRAPOLINE: 
+  // TRAMPOLINE是虚拟地址
+  // trampoline对应的是实际物理地址, 在汇编中定义
   if(mappages(pagetable, TRAMPOLINE, PGSIZE,
               (uint64)trampoline, PTE_R | PTE_X) < 0){
     uvmfree(pagetable, 0);
@@ -205,6 +215,7 @@ proc_pagetable(struct proc *p)
 
   // map the trapframe page just below the trampoline page, for
   // trampoline.S.
+  // 映射TRAPFRAME -> pa
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
@@ -244,7 +255,7 @@ userinit(void)
 {
   struct proc *p;
 
-  p = allocproc();
+  p = allocproc(); // 分配一个空闲的进程
   initproc = p;
   
   // allocate one user page and copy initcode's instructions

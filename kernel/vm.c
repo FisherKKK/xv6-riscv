@@ -234,6 +234,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
 // create an empty user page table.
 // returns 0 if out of memory.
+// 创建一个空的用户页表, 很简单的思想
 pagetable_t
 uvmcreate()
 {
