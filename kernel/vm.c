@@ -50,12 +50,14 @@ kvmmake(void)
   kvmmap(kpgtbl, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
 
   // map kernel data and the physical RAM we'll make use of.
-  // 映射内核数据和物理RAM
+  // 映射内核数据和物理RAM, etext已经在kernel.ld中进行了定义
+  // 这里etext本质上就是kernel数据end的地方
   kvmmap(kpgtbl, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
 
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
-  // 映射跳板页
+  // 映射跳板页, TRAMPOLINE对应的是虚拟地址, trampoline对应的是实际的物理地址
+  // 相当于将最高的物理地址映射到trampline上
   kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
   // allocate and map a kernel stack for each process.
@@ -81,6 +83,8 @@ kvminithart()
   // wait for any previous writes to the page table memory to finish.
   sfence_vma();
 
+  // 本质上就是说将内核页表加载到对应的寄存器, 接着刷新TLB
+  // 这里才正式启用分页功能
   w_satp(MAKE_SATP(kernel_pagetable));
 
   // flush stale entries from the TLB.

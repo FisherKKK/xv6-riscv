@@ -23,6 +23,8 @@ trapinit(void)
 }
 
 // set up to take exceptions and traps while in the kernel.
+// 设置内核处理trap的函数, 这里本质上需要用户自行进行binding
+// 这里采用设置寄存器的方式
 void
 trapinithart(void)
 {
@@ -131,19 +133,25 @@ usertrapret(void)
 
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.
+// kenelvec调用如下函数, 目前已经保留所有的寄存器到内核栈中
 void 
 kerneltrap()
 {
   int which_dev = 0;
+  // 获取PC, status, scause
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
   
+  // 判断异常是否来自S模式
   if((sstatus & SSTATUS_SPP) == 0)
     panic("kerneltrap: not from supervisor mode");
+  // 内核陷阱不允许开启中断
+  //! 处理陷阱的时候中断不允许被开启
   if(intr_get() != 0)
     panic("kerneltrap: interrupts enabled");
 
+  // 获取设备中断
   if((which_dev = devintr()) == 0){
     printf("scause %p\n", scause);
     printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -151,12 +159,15 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
+  // 如果是定时器中断, 放弃CPU
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
     yield();
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
+  // 还原当前的PC指针
   w_sepc(sepc);
+  // 还原当前的status
   w_sstatus(sstatus);
 }
 

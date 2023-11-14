@@ -54,6 +54,7 @@
 
 // map kernel stacks beneath the trampoline,
 // each surrounded by invalid guard pages.
+// 获取p对应的虚拟地址, 这里采用的方式是增加了保卫页, 因此这里*2
 #define KSTACK(p) (TRAMPOLINE - ((p)+1)* 2*PGSIZE)
 
 // User memory layout.

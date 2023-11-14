@@ -8,6 +8,7 @@
 
 struct cpu cpus[NCPU];
 
+// 这里预先定义了所有的进程
 struct proc proc[NPROC];
 
 struct proc *initproc;
@@ -24,6 +25,7 @@ extern char trampoline[]; // trampoline.S
 // parents are not lost. helps obey the
 // memory model when using p->parent.
 // must be acquired before any p->lock.
+//? wait系统调用需要首先获取的锁
 struct spinlock wait_lock;
 
 // Allocate a page for each process's kernel stack.
@@ -41,22 +43,28 @@ proc_mapstacks(pagetable_t kpgtbl)
       panic("kalloc");
     uint64 va = KSTACK((int) (p - proc)); // 内核栈的虚拟地址
     // 为内核页表映射KSTACK和pa
+    // 这里相当于为每个进程分配了一个内核栈, 这里User无法进行访问
+    // 只能内核进行处理
     kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   }
 }
 
 // initialize the proc table.
+// 初始化所有的进程
 void
 procinit(void)
 {
   struct proc *p;
   
+  //? 这两个锁的机制:
+  //? nextpid锁保证获取下一个pid原子性
+  //? 
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
-      initlock(&p->lock, "proc");
-      p->state = UNUSED;
-      p->kstack = KSTACK((int) (p - proc));
+      initlock(&p->lock, "proc"); // 初始化进程锁
+      p->state = UNUSED; // 设置状态为Unused
+      p->kstack = KSTACK((int) (p - proc)); // 设置当前进程的内核栈
   }
 }
 

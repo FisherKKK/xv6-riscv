@@ -21,12 +21,12 @@ main()
     printf("xv6 kernel is booting\n");
     printf("\n");
     kinit();         // physical page allocator, 初始化物理页表分配器
-    kvminit();       // create kernel page table
-    kvminithart();   // turn on paging
-    procinit();      // process table
-    trapinit();      // trap vectors
-    trapinithart();  // install kernel trap vector
-    plicinit();      // set up interrupt controller
+    kvminit();       // create kernel page table, 创建内核页表
+    kvminithart();   // turn on paging, 开启分页功能
+    procinit();      // process table, 初始化进程表
+    trapinit();      // trap vectors,  陷阱向量初始化
+    trapinithart();  // install kernel trap vector, 为内核安装trap vector
+    plicinit();      // set up interrupt controller, 设置平台中断控制器
     plicinithart();  // ask PLIC for device interrupts
     binit();         // buffer cache
     iinit();         // inode table

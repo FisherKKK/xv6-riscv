@@ -6,14 +6,18 @@
         # push all registers, call kerneltrap().
         # when kerneltrap() returns, restore registers, return.
         #
+        # S模式下的中断和异常会到这个函数, 当前处的位置是内核栈
+        # 这里本质上因为寄存器设置的地址为kernelvec, 因此会调用这个函数
 .globl kerneltrap
 .globl kernelvec
 .align 4
 kernelvec:
         # make room to save registers.
+        # 为保留寄存器腾出空间
         addi sp, sp, -256
 
         # save the registers.
+        # 将寄存器存入栈中
         sd ra, 0(sp)
         sd sp, 8(sp)
         sd gp, 16(sp)
@@ -47,9 +51,11 @@ kernelvec:
         sd t6, 240(sp)
 
         # call the C trap handler in trap.c
+        # 调用c函数
         call kerneltrap
 
         # restore registers.
+        # 从内核栈中回复寄存器的值
         ld ra, 0(sp)
         ld sp, 8(sp)
         ld gp, 16(sp)
@@ -82,6 +88,7 @@ kernelvec:
         ld t5, 232(sp)
         ld t6, 240(sp)
 
+        # 还原栈地址
         addi sp, sp, 256
 
         # return to whatever we were doing in the kernel.
