@@ -249,6 +249,8 @@ uvmcreate()
 // Load the user initcode into address 0 of pagetable,
 // for the very first process.
 // sz must be less than a page.
+// 将initcode载入到页表地址为0的位置
+// sz的大小必须小于一个页
 void
 uvmfirst(pagetable_t pagetable, uchar *src, uint sz)
 {
@@ -256,10 +258,11 @@ uvmfirst(pagetable_t pagetable, uchar *src, uint sz)
 
   if(sz >= PGSIZE)
     panic("uvmfirst: more than a page");
-  mem = kalloc();
+  mem = kalloc(); // 分配一个物理页
   memset(mem, 0, PGSIZE);
+  // 也就是说将va:0 -> pa: mem
   mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W|PTE_R|PTE_X|PTE_U);
-  memmove(mem, src, sz);
+  memmove(mem, src, sz); // 将src中的数据移入mem中
 }
 
 // Allocate PTEs and physical memory to grow process from oldsz to

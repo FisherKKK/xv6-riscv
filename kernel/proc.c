@@ -71,6 +71,7 @@ procinit(void)
 // Must be called with interrupts disabled,
 // to prevent race with process being moved
 // to a different CPU.
+// 为了防止竞争出现, 需要关中断
 int
 cpuid()
 {
@@ -80,6 +81,7 @@ cpuid()
 
 // Return this CPU's cpu struct.
 // Interrupts must be disabled.
+// 获取当前的CPU, 必须要关闭中断
 struct cpu*
 mycpu(void)
 {
@@ -89,10 +91,11 @@ mycpu(void)
 }
 
 // Return the current struct proc *, or zero if none.
+// 获取当前CPU正在运行的进程
 struct proc*
 myproc(void)
 {
-  push_off();
+  push_off(); // 关中断获取CPU和对应的进程
   struct cpu *c = mycpu();
   struct proc *p = c->proc;
   pop_off();
@@ -147,7 +150,7 @@ found:
   }
 
   // An empty user page table.
-  // 为进程创建一个页表
+  // 为进程创建一个页表, 并且映射trampoline和trapframe
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
     freeproc(p);
@@ -157,8 +160,12 @@ found:
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
+  // 设置进程的上下文
   memset(&p->context, 0, sizeof(p->context));
+  // ra寄存器实际上是保存当前函数执行完成之后
+  // ret之后会运行的地址
   p->context.ra = (uint64)forkret;
+  // 设置栈顶的地址, 这里的设置是因为RISCV是grow down
   p->context.sp = p->kstack + PGSIZE;
 
   return p;
@@ -207,6 +214,7 @@ proc_pagetable(struct proc *p)
   // 映射TRAPOLINE: 
   // TRAMPOLINE是虚拟地址
   // trampoline对应的是实际物理地址, 在汇编中定义
+  // 每个进程都会映射TRAMPOLINE作为最高的内存地址
   if(mappages(pagetable, TRAMPOLINE, PGSIZE,
               (uint64)trampoline, PTE_R | PTE_X) < 0){
     uvmfree(pagetable, 0);
@@ -216,6 +224,7 @@ proc_pagetable(struct proc *p)
   // map the trapframe page just below the trampoline page, for
   // trampoline.S.
   // 映射TRAPFRAME -> pa
+  // 这个本质就是映射陷阱页
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
@@ -260,18 +269,25 @@ userinit(void)
   
   // allocate one user page and copy initcode's instructions
   // and data into it.
+  // 分配一个物理页, 然后将initcode中的内容保存到其中
   uvmfirst(p->pagetable, initcode, sizeof(initcode));
-  p->sz = PGSIZE;
+  p->sz = PGSIZE; // 当前p的size就是PGSIZE
 
   // prepare for the very first "return" from kernel to user.
+  // 设置当前的PC指针为0, 也就是initcode对应的虚拟地址
   p->trapframe->epc = 0;      // user program counter
+  // 设置栈指针为PGSIZE
   p->trapframe->sp = PGSIZE;  // user stack pointer
 
+  // 拷贝进程的名称
   safestrcpy(p->name, "initcode", sizeof(p->name));
+  // 设置进程的工作目录为"/"根目录
   p->cwd = namei("/");
 
+  // 设置进程为RUNNABLE, 等待被调度
   p->state = RUNNABLE;
 
+  // 释放进程锁
   release(&p->lock);
 }
 
@@ -462,25 +478,37 @@ wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
+// 每个CPU都会执行当前的调度函数
+// Never Return, 在循环中它的操作如下:
+// - 选择一个进程运行
+// - 进行上下文切换
+// - 控制权交换
 void
 scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
   
+  // 重置当前CPU上正在运行的进程
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
+    // 开中断
     intr_on();
 
+    // 寻找一个可以被调度的进程
     for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
+      acquire(&p->lock); // 保证原子操作
       if(p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
+        // 进程需要自己释放刚刚被设置的锁
+        // 交换完成之后自己再获得锁
         p->state = RUNNING;
         c->proc = p;
+        // 进行上下文交换, 如果是新创建的进程会直接跳转到
+        // 内核中的forkret
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
@@ -532,22 +560,27 @@ yield(void)
 
 // A fork child's very first scheduling by scheduler()
 // will swtch to forkret.
+// 被创建的进程第一次会来到的位置
 void
 forkret(void)
 {
   static int first = 1;
 
   // Still holding p->lock from scheduler.
+  // 释放当前进程的锁
   release(&myproc()->lock);
 
   if (first) {
+    // 如果是第一个运行的进程必须进行文件系统的初始化
     // File system initialization must be run in the context of a
     // regular process (e.g., because it calls sleep), and thus cannot
     // be run from main().
     first = 0;
+    // 初始化文件系统
     fsinit(ROOTDEV);
   }
 
+  //TODO: 返回用户空间
   usertrapret();
 }
 

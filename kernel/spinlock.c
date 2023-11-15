@@ -84,27 +84,30 @@ holding(struct spinlock *lk)
 // push_off/pop_off are like intr_off()/intr_on() except that they are matched:
 // it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
 // are initially off, then push_off, pop_off leaves them off.
+// push_off很像关中断, pop_off很像开中断
+// 但是因为有很多进程都想关中断, 因此这里实际上就是说进行关中断计数
 
 void
 push_off(void)
 {
-  int old = intr_get();
+  int old = intr_get(); // 获取当前中断情况, 当前CPU
 
-  intr_off();
-  if(mycpu()->noff == 0)
-    mycpu()->intena = old;
-  mycpu()->noff += 1;
+  intr_off(); // 关中断
+  if(mycpu()->noff == 0) // push_off的深度为0
+    mycpu()->intena = old; // 记录push_off之前中断状态
+  mycpu()->noff += 1; // 
 }
 
+// 开中断
 void
 pop_off(void)
 {
   struct cpu *c = mycpu();
-  if(intr_get())
+  if(intr_get()) // 获取当前中断状态, 道理肯定是关中断
     panic("pop_off - interruptible");
-  if(c->noff < 1)
+  if(c->noff < 1) // 没有中断深度
     panic("pop_off");
   c->noff -= 1;
-  if(c->noff == 0 && c->intena)
+  if(c->noff == 0 && c->intena) // 如果noff归零, 将中断设置为之前的状态
     intr_on();
 }

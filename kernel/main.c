@@ -33,17 +33,18 @@ main()
     fileinit();      // file table, 初始化文件表
     virtio_disk_init(); // emulated hard disk, 模拟硬盘
     userinit();      // first user process, 初始化第一个用户进程
-    __sync_synchronize();
+    __sync_synchronize(); // 这里防止指令重排, 相当于是一个memory barrier
+    // 确保到这里所有的读写操作都已经完成, 并且内存读写操作会被其它处理器看到
     started = 1;
   } else {
     // 其余CPU进行空转
     while(started == 0)
       ;
-    __sync_synchronize();
+    __sync_synchronize(); // 其它CPU也先进入屏障, 保证所有操作都被看见
     printf("hart %d starting\n", cpuid());
-    kvminithart();    // turn on paging
-    trapinithart();   // install kernel trap vector
-    plicinithart();   // ask PLIC for device interrupts
+    kvminithart();    // turn on paging, 开启当前CPU的分页操作, 也就是设计当前CPU的寄存器
+    trapinithart();   // install kernel trap vector, 安装内核陷阱, 设置trap寄存器
+    plicinithart();   // ask PLIC for device interrupts, 安装PLIC
   }
 
   scheduler();        

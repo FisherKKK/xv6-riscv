@@ -297,6 +297,7 @@ r_sp()
 
 // read and write tp, the thread pointer, which xv6 uses to hold
 // this core's hartid (core number), the index into cpus[].
+// 保存当前CPU的hartid
 static inline uint64
 r_tp()
 {

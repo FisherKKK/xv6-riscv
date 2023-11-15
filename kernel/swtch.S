@@ -1,6 +1,7 @@
 # Context switch
 #
 #   void swtch(struct context *old, struct context *new);
+#   上下文交换代码, 将当前寄存器的值保存再old, 载入新的寄存器
 # 
 # Save current registers in old. Load from new.	
 
