@@ -58,6 +58,7 @@ kvmmake(void)
   // the highest virtual address in the kernel.
   // 映射跳板页, TRAMPOLINE对应的是虚拟地址, trampoline对应的是实际的物理地址
   // 相当于将最高的物理地址映射到trampline上
+  //! 也就是说无论内核还是用户进程都再TRAMPOLINE处映射了trampoline的代码
   kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
   // allocate and map a kernel stack for each process.

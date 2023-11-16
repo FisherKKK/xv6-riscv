@@ -87,6 +87,7 @@ usertrap(void)
 
 //
 // return to user space
+// 返回到用户空间
 //
 void
 usertrapret(void)
@@ -96,9 +97,12 @@ usertrapret(void)
   // we're about to switch the destination of traps from
   // kerneltrap() to usertrap(), so turn off interrupts until
   // we're back in user space, where usertrap() is correct.
+  // 关中断的原因是不希望CPU被中断之后, 寄存器状态变化
+  // 也就是保护这段敏感操作
   intr_off();
 
   // send syscalls, interrupts, and exceptions to uservec in trampoline.S
+  // 设置用户的中断向量表, 再RISCV中就是中断处理函数
   uint64 trampoline_uservec = TRAMPOLINE + (uservec - trampoline);
   w_stvec(trampoline_uservec);
 

@@ -509,6 +509,7 @@ scheduler(void)
         c->proc = p;
         // 进行上下文交换, 如果是新创建的进程会直接跳转到
         // 内核中的forkret
+        //! 到这一步为止: 线程的context中stack指向内核栈, epc指向forkret
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
@@ -576,11 +577,12 @@ forkret(void)
     // regular process (e.g., because it calls sleep), and thus cannot
     // be run from main().
     first = 0;
-    // 初始化文件系统
+    //TODO: 初始化文件系统
     fsinit(ROOTDEV);
   }
 
   //TODO: 返回用户空间
+  // 从内核空间返回用户空间
   usertrapret();
 }
 
