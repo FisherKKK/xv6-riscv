@@ -103,26 +103,31 @@ usertrapret(void)
 
   // send syscalls, interrupts, and exceptions to uservec in trampoline.S
   // 设置用户的中断向量表, 再RISCV中就是中断处理函数
+  //! 因为RISCV看到本质上也是虚拟地址, 然后根据Page Tabel进行翻译
+  //! 这里实际上就是根据实际上物理页的差距计算uservec的虚拟地址
   uint64 trampoline_uservec = TRAMPOLINE + (uservec - trampoline);
-  w_stvec(trampoline_uservec);
+  w_stvec(trampoline_uservec); // 设置用户级别中断处理函数
 
   // set up trapframe values that uservec will need when
   // the process next traps into the kernel.
-  p->trapframe->kernel_satp = r_satp();         // kernel page table
-  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
-  p->trapframe->kernel_trap = (uint64)usertrap;
-  p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
+  p->trapframe->kernel_satp = r_satp();         // kernel page table, 保存内核页表
+  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack, 保存内核栈指针
+  p->trapframe->kernel_trap = (uint64)usertrap; //? 设置内核的kernel trap 
+  p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid(), 保存内核的cpu
 
   // set up the registers that trampoline.S's sret will use
   // to get to user space.
   
   // set S Previous Privilege mode to User.
+  // 设置进入User之前的Mode为S
   unsigned long x = r_sstatus();
   x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
   x |= SSTATUS_SPIE; // enable interrupts in user mode
   w_sstatus(x);
 
   // set S Exception Program Counter to the saved user pc.
+  // 设置程序的PC指针为用户程序的PC
+  // 当进行系统调用或者调用返回的之后跳转到这一个部分
   w_sepc(p->trapframe->epc);
 
   // tell trampoline.S the user page table to switch to.
@@ -131,7 +136,9 @@ usertrapret(void)
   // jump to userret in trampoline.S at the top of memory, which 
   // switches to the user page table, restores user registers,
   // and switches to user mode with sret.
+  // 返回到用户空间的代码, 使用sret切换到用户空间
   uint64 trampoline_userret = TRAMPOLINE + (userret - trampoline);
+  // 同时设置对应的页表
   ((void (*)(uint64))trampoline_userret)(satp);
 }
 
