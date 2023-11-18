@@ -3,7 +3,7 @@
 
 
 #define ROOTINO  1   // root i-number
-#define BSIZE 1024  // block size
+#define BSIZE 1024  // block size, 文件系统中块的大小
 
 // Disk layout:
 // [ boot block | super block | log | inode blocks |
@@ -11,15 +11,16 @@
 //
 // mkfs computes the super block and builds an initial file system. The
 // super block describes the disk layout:
+// superblock描述了整个磁盘的布局
 struct superblock {
   uint magic;        // Must be FSMAGIC
-  uint size;         // Size of file system image (blocks)
-  uint nblocks;      // Number of data blocks
-  uint ninodes;      // Number of inodes.
-  uint nlog;         // Number of log blocks
-  uint logstart;     // Block number of first log block
-  uint inodestart;   // Block number of first inode block
-  uint bmapstart;    // Block number of first free map block
+  uint size;         // Size of file system image (blocks), 文件系统镜像的大小
+  uint nblocks;      // Number of data blocks, 数据块的数目
+  uint ninodes;      // Number of inodes, inode的数目
+  uint nlog;         // Number of log blocks, log block的数目
+  uint logstart;     // Block number of first log block, 第一个log block的块号
+  uint inodestart;   // Block number of first inode block, 第一个inode block的块号
+  uint bmapstart;    // Block number of first free map block, free map block的块号
 };
 
 #define FSMAGIC 0x10203040
@@ -53,6 +54,7 @@ struct dinode {
 // Directory is a file containing a sequence of dirent structures.
 #define DIRSIZ 14
 
+// 目录是一个文件, 包含了一系列的dirent结构
 struct dirent {
   ushort inum;
   char name[DIRSIZ];

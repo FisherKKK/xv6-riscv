@@ -15,19 +15,22 @@
 #define static_assert(a, b) do { switch (0) case 0: case (a): ; } while (0)
 #endif
 
+// 定义inode节点数目为200
 #define NINODES 200
 
 // Disk layout:
+// 整个磁盘的布局如下:
+// [磁盘启动块 | file元信息 | 日志 | inode | free block | real data block]
 // [ boot block | sb block | log | inode blocks | free bit map | data blocks ]
 
-int nbitmap = FSSIZE/(BSIZE*8) + 1;
+int nbitmap = FSSIZE/(BSIZE*8) + 1; 
 int ninodeblocks = NINODES / IPB + 1;
 int nlog = LOGSIZE;
 int nmeta;    // Number of meta blocks (boot, sb, nlog, inode, bitmap)
 int nblocks;  // Number of data blocks
 
 int fsfd;
-struct superblock sb;
+struct superblock sb; // super block描述整个文件系统的
 char zeroes[BSIZE];
 uint freeinode = 1;
 uint freeblock;
@@ -70,6 +73,7 @@ main(int argc, char *argv[])
 {
   int i, cc, fd;
   uint rootino, inum, off;
+  //TODO: Not yet seen
   struct dirent de;
   char buf[BSIZE];
   struct dinode din;
