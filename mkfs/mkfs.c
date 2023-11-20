@@ -23,15 +23,18 @@
 // [磁盘启动块 | file元信息 | 日志 | inode | free block | real data block]
 // [ boot block | sb block | log | inode blocks | free bit map | data blocks ]
 
-int nbitmap = FSSIZE/(BSIZE*8) + 1; 
+// 这里的计算方式就是data block / (一块的位数), 也就是计算nbitmap需要多少块
+int nbitmap = FSSIZE/(BSIZE*8) + 1;
+// 这里计算inode的块数: 总共需要inode个数 / 每个块中可以容纳inode的数目
 int ninodeblocks = NINODES / IPB + 1;
+// 日志块的数目
 int nlog = LOGSIZE;
-int nmeta;    // Number of meta blocks (boot, sb, nlog, inode, bitmap)
-int nblocks;  // Number of data blocks
+int nmeta;    // Number of meta blocks (boot, sb, nlog, inode, bitmap), 总共元数据的数目
+int nblocks;  // Number of data blocks, 数据块的数目
 
 int fsfd;
 struct superblock sb; // super block描述整个文件系统的
-char zeroes[BSIZE];
+char zeroes[BSIZE]; // 全0
 uint freeinode = 1;
 uint freeblock;
 
@@ -46,6 +49,8 @@ void iappend(uint inum, void *p, int n);
 void die(const char *);
 
 // convert to riscv byte order
+// 转换为riscv的字节顺序
+//? 这里本质就是把x转换为小端法表示
 ushort
 xshort(ushort x)
 {
@@ -73,7 +78,6 @@ main(int argc, char *argv[])
 {
   int i, cc, fd;
   uint rootino, inum, off;
-  //TODO: Not yet seen
   struct dirent de;
   char buf[BSIZE];
   struct dinode din;
@@ -89,20 +93,28 @@ main(int argc, char *argv[])
   assert((BSIZE % sizeof(struct dinode)) == 0);
   assert((BSIZE % sizeof(struct dirent)) == 0);
 
+  // 文件系统的fd:
+  // O_RDWR以读写方式打开
+  // O_CREATE 不存在就创建
+  // O_TRUNC 存在就截断
+  // 0666表示所有用户均有权限读写
   fsfd = open(argv[1], O_RDWR|O_CREAT|O_TRUNC, 0666);
   if(fsfd < 0)
     die(argv[1]);
 
   // 1 fs block = 1 disk sector
+  // 元数据的块数 = 1boot + 1super + nlog + ninode + nbitmap
   nmeta = 2 + nlog + ninodeblocks + nbitmap;
+  // 数据块的数目 = 文件系统总块数 - 元数据块数
   nblocks = FSSIZE - nmeta;
 
+  // 文件系统的magic数字
   sb.magic = FSMAGIC;
   sb.size = xint(FSSIZE);
   sb.nblocks = xint(nblocks);
   sb.ninodes = xint(NINODES);
   sb.nlog = xint(nlog);
-  sb.logstart = xint(2);
+  sb.logstart = xint(2); // 处于第二块
   sb.inodestart = xint(2+nlog);
   sb.bmapstart = xint(2+nlog+ninodeblocks);
 
@@ -111,19 +123,28 @@ main(int argc, char *argv[])
 
   freeblock = nmeta;     // the first free block that we can allocate
 
+  // 写sector, 对所有的数据块都写0
   for(i = 0; i < FSSIZE; i++)
     wsect(i, zeroes);
 
+  // 写buf为0
   memset(buf, 0, sizeof(buf));
+  // 将sb的内容移入到buf中, memmove的优点在于防止两块内存重叠
   memmove(buf, &sb, sizeof(sb));
+  // 将buf内容写入sect 1
   wsect(1, buf);
 
+  // 根inode, 它是一个目录
   rootino = ialloc(T_DIR);
   assert(rootino == ROOTINO);
 
+  // 清空目录
   bzero(&de, sizeof(de));
+  // 设置de的inum
   de.inum = xshort(rootino);
+  // 设置de的name
   strcpy(de.name, ".");
+  //TODO: Not yet learn
   iappend(rootino, &de, sizeof(de));
 
   bzero(&de, sizeof(de));
@@ -176,15 +197,21 @@ main(int argc, char *argv[])
   exit(0);
 }
 
+
+// 
 void
 wsect(uint sec, void *buf)
 {
+  // 改变文件描述符的偏置, 从0 -> sec * BSIZE
   if(lseek(fsfd, sec * BSIZE, 0) != sec * BSIZE)
     die("lseek");
+  // 写0数组到对应的位置
   if(write(fsfd, buf, BSIZE) != BSIZE)
     die("write");
 }
 
+
+// inum是inode对应的号码, ip是dinode对应的地址
 void
 winode(uint inum, struct dinode *ip)
 {
@@ -192,11 +219,14 @@ winode(uint inum, struct dinode *ip)
   uint bn;
   struct dinode *dip;
 
+  // inum对应的inode所在的磁盘块
   bn = IBLOCK(inum, sb);
+  // 读取对应的块
   rsect(bn, buf);
+  // 找到ip在块中的偏置
   dip = ((struct dinode*)buf) + (inum % IPB);
-  *dip = *ip;
-  wsect(bn, buf);
+  *dip = *ip; // 放到buf中
+  wsect(bn, buf); // 写入磁盘块
 }
 
 void
@@ -221,16 +251,22 @@ rsect(uint sec, void *buf)
     die("read");
 }
 
+
 uint
 ialloc(ushort type)
 {
+  // 记录当前分配inode的数目, 这里可以理解成当前inode的id
   uint inum = freeinode++;
   struct dinode din;
-
+  // 将din的内容清0
   bzero(&din, sizeof(din));
+  // 设置inode类型
   din.type = xshort(type);
+  // 设置inode的link数目
   din.nlink = xshort(1);
+  // inode的大小
   din.size = xint(0);
+  // 将内存中的din写入磁盘
   winode(inum, &din);
   return inum;
 }
@@ -297,6 +333,7 @@ iappend(uint inum, void *xp, int n)
   winode(inum, &din);
 }
 
+// die相当于这里的panic
 void
 die(const char *s)
 {

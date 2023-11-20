@@ -13,7 +13,7 @@
 // super block describes the disk layout:
 // superblock描述了整个磁盘的布局
 struct superblock {
-  uint magic;        // Must be FSMAGIC
+  uint magic;        // Must be FSMAGIC, 标识了文件系统的类型
   uint size;         // Size of file system image (blocks), 文件系统镜像的大小
   uint nblocks;      // Number of data blocks, 数据块的数目
   uint ninodes;      // Number of inodes, inode的数目
@@ -30,6 +30,7 @@ struct superblock {
 #define MAXFILE (NDIRECT + NINDIRECT)
 
 // On-disk inode structure
+// 磁盘中inode结构
 struct dinode {
   short type;           // File type
   short major;          // Major device number (T_DEVICE only)
@@ -40,6 +41,7 @@ struct dinode {
 };
 
 // Inodes per block.
+// 每个block可以存储的inode数目
 #define IPB           (BSIZE / sizeof(struct dinode))
 
 // Block containing inode i

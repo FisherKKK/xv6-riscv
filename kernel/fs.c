@@ -47,6 +47,7 @@ fsinit(int dev) {
 }
 
 // Zero a block.
+// 将一个block重置
 static void
 bzero(int dev, int bno)
 {
