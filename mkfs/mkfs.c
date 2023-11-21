@@ -144,16 +144,19 @@ main(int argc, char *argv[])
   de.inum = xshort(rootino);
   // 设置de的name
   strcpy(de.name, ".");
-  //TODO: Not yet learn
+  // 将de添加到inode中
   iappend(rootino, &de, sizeof(de));
 
+  // 如下添加..目录
   bzero(&de, sizeof(de));
   de.inum = xshort(rootino);
   strcpy(de.name, "..");
   iappend(rootino, &de, sizeof(de));
 
+  // 添加用户内容
   for(i = 2; i < argc; i++){
     // get rid of "user/"
+    // 删除user/前缀, 获取真实名称
     char *shortname;
     if(strncmp(argv[i], "user/", 5) == 0)
       shortname = argv[i] + 5;
@@ -162,6 +165,7 @@ main(int argc, char *argv[])
     
     assert(index(shortname, '/') == 0);
 
+    // 打开对应的文件
     if((fd = open(argv[i], 0)) < 0)
       die(argv[i]);
 
@@ -169,16 +173,22 @@ main(int argc, char *argv[])
     // The binaries are named _rm, _cat, etc. to keep the
     // build operating system from trying to execute them
     // in place of system binaries like rm and cat.
+    // 跳过开头的_前缀
     if(shortname[0] == '_')
       shortname += 1;
 
+    // 分配一个FILE类型的inode
+    // 1. 需要分配对应的data block
+    // 2. 需要将inode添加到dirent中
     inum = ialloc(T_FILE);
 
     bzero(&de, sizeof(de));
     de.inum = xshort(inum);
     strncpy(de.name, shortname, DIRSIZ);
+    // 添加到对应的目录中
     iappend(rootino, &de, sizeof(de));
 
+    // 追加buff
     while((cc = read(fd, buf, sizeof(buf))) > 0)
       iappend(inum, buf, cc);
 
@@ -192,13 +202,13 @@ main(int argc, char *argv[])
   din.size = xint(off);
   winode(rootino, &din);
 
+  // 更新balloc, 写入磁盘中的superblock
   balloc(freeblock);
 
   exit(0);
 }
 
 
-// 
 void
 wsect(uint sec, void *buf)
 {
@@ -289,6 +299,8 @@ balloc(int used)
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 
+// inum对应的是inode号
+// xp对应的是指针, 例如&dirent, n表示写入的大小
 void
 iappend(uint inum, void *xp, int n)
 {
@@ -296,40 +308,56 @@ iappend(uint inum, void *xp, int n)
   uint fbn, off, n1;
   struct dinode din;
   char buf[BSIZE];
-  uint indirect[NINDIRECT];
+  uint indirect[NINDIRECT]; // 二级表
   uint x;
 
+  // 从磁盘读取对应的inum对应的inode
   rinode(inum, &din);
   off = xint(din.size);
   // printf("append inum %d at off %d sz %d\n", inum, off, n);
   while(n > 0){
+    // fb中的偏置
     fbn = off / BSIZE;
     assert(fbn < MAXFILE);
+    // 如果存储内容在直接块中
     if(fbn < NDIRECT){
+      // 如果当前没有数据块
       if(xint(din.addrs[fbn]) == 0){
+        // 分配新的数据块号
         din.addrs[fbn] = xint(freeblock++);
       }
+      // 获取对应的磁盘区块号
       x = xint(din.addrs[fbn]);
     } else {
+      // 说明新的数据要存储在非直接块中
       if(xint(din.addrs[NDIRECT]) == 0){
+        // 首先分配一个非直接磁盘块
         din.addrs[NDIRECT] = xint(freeblock++);
       }
+      // 读取对应的sector
       rsect(xint(din.addrs[NDIRECT]), (char*)indirect);
+      // 如果对应的地址也是0, 那么也需要进行分配
       if(indirect[fbn - NDIRECT] == 0){
         indirect[fbn - NDIRECT] = xint(freeblock++);
+        // 写入磁盘块
         wsect(xint(din.addrs[NDIRECT]), (char*)indirect);
       }
       x = xint(indirect[fbn-NDIRECT]);
     }
+
     n1 = min(n, (fbn + 1) * BSIZE - off);
+    // 读取对应的磁盘块
     rsect(x, buf);
+    // copy到对应的内容中
     bcopy(p, buf + off - (fbn * BSIZE), n1);
+    // 写入sector
     wsect(x, buf);
     n -= n1;
     off += n1;
     p += n1;
   }
   din.size = xint(off);
+  // 写入inode
   winode(inum, &din);
 }
 

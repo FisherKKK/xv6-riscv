@@ -25,6 +25,7 @@ struct superblock {
 
 #define FSMAGIC 0x10203040
 
+// 11(存储对应的data block块号) + 1(二级间接data block块号)
 #define NDIRECT 12
 #define NINDIRECT (BSIZE / sizeof(uint))
 #define MAXFILE (NDIRECT + NINDIRECT)
