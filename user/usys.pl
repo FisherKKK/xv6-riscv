@@ -10,8 +10,12 @@ sub entry {
     my $name = shift;
     print ".global $name\n";
     print "${name}:\n";
+    # 将system call的number放入寄存器中
     print " li a7, SYS_${name}\n";
+    # 这里的ecall是riscv中典型的陷阱调用代码
+    # 执行之后会跳转到kernel space
     print " ecall\n";
+    # 这里相当于从system call中返回
     print " ret\n";
 }
 	

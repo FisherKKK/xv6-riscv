@@ -313,6 +313,11 @@ growproc(int n)
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
+// 创建一个新的进程, 父子进程之间所有的内容均相同, 但是父子进程的返回值并不相同
+// 所以大体的思路就是:
+// 1. 找到一个空闲的进程
+// 2. 通过当前进程的pid将所有的内容进行deepcopy(因此在这里可以实现cow)
+// 3. 那么如何实现父子进程的return value不同呢? 首先我们知道返回值保存在哪个寄存器, 我们可以通过设置process的context来保证这一点
 int
 fork(void)
 {
@@ -321,30 +326,37 @@ fork(void)
   struct proc *p = myproc();
 
   // Allocate process.
+  // 首先分配一个子进程
   if((np = allocproc()) == 0){
     return -1;
   }
 
   // Copy user memory from parent to child.
+  // 将父进程页表中的所有内容 --> 子进程中
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
+  // 设置页表的大小
   np->sz = p->sz;
 
   // copy saved user registers.
+  // 复制所有的父进程上下文
   *(np->trapframe) = *(p->trapframe);
 
   // Cause fork to return 0 in the child.
+  // 设置子进程的返回值为0, 通过设置a0寄存器
   np->trapframe->a0 = 0;
 
   // increment reference counts on open file descriptors.
+  // 复制所有父进程中的OPEN_FILE引用(可以理解成是增加IO计数)
   for(i = 0; i < NOFILE; i++)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  // 复制父进程的名称
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
@@ -352,18 +364,21 @@ fork(void)
   release(&np->lock);
 
   acquire(&wait_lock);
+  // 设置子进程的父进程
   np->parent = p;
   release(&wait_lock);
 
   acquire(&np->lock);
+  // 设置当前子进程进程的状态
   np->state = RUNNABLE;
   release(&np->lock);
-
+  // 当前函数的返回值就是子进程的id
   return pid;
 }
 
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
+// 进程p放弃称为父亲, 那么就把它的所有的child寄养到init下
 void
 reparent(struct proc *p)
 {
@@ -371,6 +386,7 @@ reparent(struct proc *p)
 
   for(pp = proc; pp < &proc[NPROC]; pp++){
     if(pp->parent == p){
+      // TODO: Not yet analyze
       pp->parent = initproc;
       wakeup(initproc);
     }
@@ -380,15 +396,19 @@ reparent(struct proc *p)
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
+// exit当前的进程, 永远不会返回, 一个exit的进程会进入zombie状态
+// 直到它的父进程调用wait才会进行释放
 void
 exit(int status)
 {
   struct proc *p = myproc();
 
+  // init进程无法进行exit
   if(p == initproc)
     panic("init exiting");
 
   // Close all open files.
+  // 关闭所有打开的文件, 底层是关闭文件的引用计数
   for(int fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd]){
       struct file *f = p->ofile[fd];
@@ -398,26 +418,33 @@ exit(int status)
   }
 
   begin_op();
+  // 这里相当于减小inode引用计数
   iput(p->cwd);
   end_op();
+  // 关闭p的工作目录
   p->cwd = 0;
 
   acquire(&wait_lock);
 
   // Give any children to init.
+  // 改变其所有子进程的parent -> init
   reparent(p);
 
   // Parent might be sleeping in wait().
+  // TODO: 唤醒p的父进程
   wakeup(p->parent);
   
   acquire(&p->lock);
 
+  // 设置退出状态
   p->xstate = status;
+  // 设置为ZOMBIE
   p->state = ZOMBIE;
 
   release(&wait_lock);
 
   // Jump into the scheduler, never to return.
+  // 进入调度scheduler, 进程不会return也不会继续运行
   sched();
   panic("zombie exit");
 }
@@ -437,14 +464,17 @@ wait(uint64 addr)
     // Scan through table looking for exited children.
     havekids = 0;
     for(pp = proc; pp < &proc[NPROC]; pp++){
+      // 如果存在子进程
       if(pp->parent == p){
         // make sure the child isn't still in exit() or swtch().
+        // 尝试获取进程锁, 这里可以保证子进程持有锁
         acquire(&pp->lock);
 
         havekids = 1;
         if(pp->state == ZOMBIE){
           // Found one.
           pid = pp->pid;
+          // 如果子进程已经进入了ZOMBIE状态, 可以将它的xstate -> 用户空间的对应地址
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
                                   sizeof(pp->xstate)) < 0) {
             release(&pp->lock);
@@ -528,6 +558,7 @@ scheduler(void)
 // be proc->intena and proc->noff, but that would
 // break in the few places where a lock is held but
 // there's no process.
+// 在这里需要保存开关中断的信息, 因此这个属性属于某个kernel thread
 void
 sched(void)
 {

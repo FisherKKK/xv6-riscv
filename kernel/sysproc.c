@@ -10,6 +10,7 @@ uint64
 sys_exit(void)
 {
   int n;
+  // 这里的n表示exit的状态码
   argint(0, &n);
   exit(n);
   return 0;  // not reached
@@ -31,6 +32,7 @@ uint64
 sys_wait(void)
 {
   uint64 p;
+  // 等待, 并将子进程的退出状态写入用户空间中的地址p
   argaddr(0, &p);
   return wait(p);
 }

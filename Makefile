@@ -108,6 +108,9 @@ ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
 
 # %表示通配符, 将ULIB和所有的.o文件构建成_开头的可执行文件
 # @表示文件名, ^表示所有依赖项
+# 所以这段代码的本质含义是生成RISCV下的可执行文件
+# gcc编译生成对应的.o文件
+# 真正linker进行链接的时候还需要借助user.ld下的linker script才能真正构成可执行文件
 _%: %.o $(ULIB)
 	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $^
 	$(OBJDUMP) -S $@ > $*.asm
