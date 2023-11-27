@@ -1,9 +1,9 @@
 struct file {
-  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type;
-  int ref; // reference count
-  char readable;
+  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type; // 文件的类型
+  int ref; // reference count, 文件的引用数目
+  char readable; // 描述文件的读写性质
   char writable;
-  struct pipe *pipe; // FD_PIPE
+  struct pipe *pipe; // FD_PIPE, 根据文件的类型设置其对应的底层数据结构
   struct inode *ip;  // FD_INODE and FD_DEVICE
   uint off;          // FD_INODE
   short major;       // FD_DEVICE

@@ -14,6 +14,7 @@
 #include "proc.h"
 
 struct devsw devsw[NDEV];
+// filetable中实际上存储了所有的file, 一个萝卜一个坑, 实现把坑都占好了
 struct {
   struct spinlock lock;
   struct file file[NFILE];
@@ -27,6 +28,7 @@ fileinit(void)
 }
 
 // Allocate a file structure.
+// 分配一个文件的数据结构, 本质上就是找到一个ref=0的文件分配出去
 struct file*
 filealloc(void)
 {
@@ -111,7 +113,7 @@ fileread(struct file *f, uint64 addr, int n)
 
   if(f->readable == 0)
     return -1;
-
+  // 不同的文件类型会转交到对应的底层进行读取
   if(f->type == FD_PIPE){
     r = piperead(f->pipe, addr, n);
   } else if(f->type == FD_DEVICE){

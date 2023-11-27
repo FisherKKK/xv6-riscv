@@ -10,15 +10,18 @@
 
 #define PIPESIZE 512
 
+// 管道的数据结构
 struct pipe {
-  struct spinlock lock;
-  char data[PIPESIZE];
+  struct spinlock lock; // 读写对应的锁
+  char data[PIPESIZE]; // 管道中的数据
   uint nread;     // number of bytes read
   uint nwrite;    // number of bytes written
   int readopen;   // read fd is still open
   int writeopen;  // write fd is still open
 };
 
+
+// 分配一个读写管道
 int
 pipealloc(struct file **f0, struct file **f1)
 {
@@ -26,25 +29,33 @@ pipealloc(struct file **f0, struct file **f1)
 
   pi = 0;
   *f0 = *f1 = 0;
+  // 首先为读写分配一个文件, 因为基本all都被抽象成了file
   if((*f0 = filealloc()) == 0 || (*f1 = filealloc()) == 0)
     goto bad;
+  
+  // 为pipe单独分配一个页
   if((pi = (struct pipe*)kalloc()) == 0)
     goto bad;
+  // 设置这个pipe是否可读写
   pi->readopen = 1;
   pi->writeopen = 1;
+  // pipe当前的读写偏置(数目)
   pi->nwrite = 0;
   pi->nread = 0;
   initlock(&pi->lock, "pipe");
+  // 设置管道读文件
   (*f0)->type = FD_PIPE;
   (*f0)->readable = 1;
   (*f0)->writable = 0;
   (*f0)->pipe = pi;
+  // 设置管道写文件
   (*f1)->type = FD_PIPE;
   (*f1)->readable = 0;
   (*f1)->writable = 1;
   (*f1)->pipe = pi;
   return 0;
 
+// 如果出现问题就清理现场
  bad:
   if(pi)
     kfree((char*)pi);

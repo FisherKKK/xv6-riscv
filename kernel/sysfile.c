@@ -36,13 +36,18 @@ argfd(int n, int *pfd, struct file **pf)
 
 // Allocate a file descriptor for the given file.
 // Takes over file reference from caller on success.
+// 为指定的文件分配一个文件描述符, 这里的分配在proc中的of表
+// 所以实际上fd就是proc中用来索引file的下标索引
 static int
 fdalloc(struct file *f)
 {
   int fd;
   struct proc *p = myproc();
 
+  // 通过这一个部分其实就可以理解为什么close之后的分配可以重新占据
+  // NOFILE表示Proc可以打开文件的数目
   for(fd = 0; fd < NOFILE; fd++){
+    // 直到列表中空闲的file, 进行分配
     if(p->ofile[fd] == 0){
       p->ofile[fd] = f;
       return fd;
@@ -65,6 +70,7 @@ sys_dup(void)
   return fd;
 }
 
+// 读文件操作read(fd, dst, sz)
 uint64
 sys_read(void)
 {
@@ -72,10 +78,14 @@ sys_read(void)
   int n;
   uint64 p;
 
+  // 获取buff地址
   argaddr(1, &p);
+  // 获取读的max
   argint(2, &n);
+  // 通过获取fd获取file
   if(argfd(0, 0, &f) < 0)
     return -1;
+  // 正式读取文件, 并返回读取的sz
   return fileread(f, p, n);
 }
 
@@ -474,25 +484,38 @@ sys_exec(void)
   return -1;
 }
 
+/**
+ * 1. 因为pipe最后抽象成了文件, 因此首先需要分配两个文件
+ * 2. 其次需要分配文件抽象的pipe
+ * 3. 将pipe和两个文件绑定
+ * 4. 将两个文件绑定到proc获得对应的fd
+ * 5. 最后将内核空间数据copy到用户空间
+*/
 uint64
 sys_pipe(void)
 {
-  uint64 fdarray; // user pointer to array of two integers
+  // pipe系统调用的参数是int fd[2]
+  // 其中fd[0]表示读, fd[1]表示写
+  uint64 fdarray; // user pointer to array of two integers, 因此这里是一个整数的数组, 来自用户空间地址
   struct file *rf, *wf;
   int fd0, fd1;
   struct proc *p = myproc();
 
   argaddr(0, &fdarray);
+  // 为读写管道分配文件
   if(pipealloc(&rf, &wf) < 0)
     return -1;
   fd0 = -1;
+  // 为读写文件分配fd
   if((fd0 = fdalloc(rf)) < 0 || (fd1 = fdalloc(wf)) < 0){
+    // 处理异常情况
     if(fd0 >= 0)
       p->ofile[fd0] = 0;
     fileclose(rf);
     fileclose(wf);
     return -1;
   }
+  // 将内容写回到用户空间地址
   if(copyout(p->pagetable, fdarray, (char*)&fd0, sizeof(fd0)) < 0 ||
      copyout(p->pagetable, fdarray+sizeof(fd0), (char *)&fd1, sizeof(fd1)) < 0){
     p->ofile[fd0] = 0;
