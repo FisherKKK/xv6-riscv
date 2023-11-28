@@ -293,17 +293,22 @@ idup(struct inode *ip)
 
 // Lock the given inode.
 // Reads the inode from disk if necessary.
+// 从磁盘上读取inode的预先操作
+// 
 void
 ilock(struct inode *ip)
 {
   struct buf *bp;
   struct dinode *dip;
 
+  // 判断inode的合法性
   if(ip == 0 || ip->ref < 1)
     panic("ilock");
 
+  // 获取ip对应的锁, 否则进入休眠状态
   acquiresleep(&ip->lock);
 
+  // 判断inode
   if(ip->valid == 0){
     bp = bread(ip->dev, IBLOCK(ip->inum, sb));
     dip = (struct dinode*)bp->data + ip->inum%IPB;
@@ -472,6 +477,8 @@ stati(struct inode *ip, struct stat *st)
 // Caller must hold ip->lock.
 // If user_dst==1, then dst is a user virtual address;
 // otherwise, dst is a kernel address.
+// 从inode中读写数据, 首先必须要保证inode锁被获取, 根据user_dist决定是否
+// 读取到用户空间还是内核空间
 int
 readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
 {

@@ -106,6 +106,7 @@ filestat(struct file *f, uint64 addr)
 
 // Read from file f.
 // addr is a user virtual address.
+// f是对file的抽象, addr是用户空间地址
 int
 fileread(struct file *f, uint64 addr, int n)
 {
@@ -114,13 +115,14 @@ fileread(struct file *f, uint64 addr, int n)
   if(f->readable == 0)
     return -1;
   // 不同的文件类型会转交到对应的底层进行读取
-  if(f->type == FD_PIPE){
+  if(f->type == FD_PIPE){ // 如果读PIPE
     r = piperead(f->pipe, addr, n);
-  } else if(f->type == FD_DEVICE){
+  } else if(f->type == FD_DEVICE){ // 如果读DEVICE, 这里Device抽象出了读写方法
     if(f->major < 0 || f->major >= NDEV || !devsw[f->major].read)
       return -1;
+    // 这里相当于就是调用设备的读写函数
     r = devsw[f->major].read(1, addr, n);
-  } else if(f->type == FD_INODE){
+  } else if(f->type == FD_INODE){ // 如果读INODE
     ilock(f->ip);
     if((r = readi(f->ip, 1, addr, f->off, n)) > 0)
       f->off += r;

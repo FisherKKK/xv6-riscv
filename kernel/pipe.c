@@ -113,6 +113,13 @@ pipewrite(struct pipe *pi, uint64 addr, int n)
   return i;
 }
 
+
+/**
+ * 如果read的文件底层是一个pipe, 具体的逻辑如下:
+ *  1. 获取pipe的读写锁
+ *  2. 根据读写的偏置进行读取数据
+ *  3. 将读取的数据返回到用户空间
+ */
 int
 piperead(struct pipe *pi, uint64 addr, int n)
 {
@@ -120,22 +127,35 @@ piperead(struct pipe *pi, uint64 addr, int n)
   struct proc *pr = myproc();
   char ch;
 
+  // 首先获取管道对应的锁
   acquire(&pi->lock);
+
+  // 这个相当于阻塞同步, 也就是没有数据可读的时候进入休眠并且释放锁
+  // 采用while循环的原因是进程被唤醒后应该重新竞争锁
   while(pi->nread == pi->nwrite && pi->writeopen){  //DOC: pipe-empty
+    // 如果当前进行已经被kill, 释放锁
     if(killed(pr)){
       release(&pi->lock);
       return -1;
     }
+    // 进入休眠, 等待写数据
     sleep(&pi->nread, &pi->lock); //DOC: piperead-sleep
   }
+
+  // 当管道中存在可读数据的时候, 进行数据的读取
   for(i = 0; i < n; i++){  //DOC: piperead-copy
+    // 这一步相当于如果没有可读数据时跳出
     if(pi->nread == pi->nwrite)
       break;
+    // 获取当前读偏置对应的数据
     ch = pi->data[pi->nread++ % PIPESIZE];
+    // 将数据copy到用户空间
     if(copyout(pr->pagetable, addr + i, &ch, 1) == -1)
       break;
   }
+  // 唤醒写等待写的进程
   wakeup(&pi->nwrite);  //DOC: piperead-wakeup
+  // 释放管道锁
   release(&pi->lock);
   return i;
 }

@@ -617,8 +617,15 @@ forkret(void)
   usertrapret();
 }
 
+/**
+ * 因此sleep和wakeup的整体逻辑是, 线程等待一个变量chan的过程中释放锁进入休眠状态
+ * 接着唤醒进程采用更新chan对应的值之后, wakeup所有相关的进程, 让他们重复判断
+ * 当前的状态是否满足进程的处理逻辑
+*/
+
 // Atomically release lock and sleep on chan.
 // Reacquires lock when awakened.
+// 自动释放锁, 进入休眠同时等待被唤醒
 void
 sleep(void *chan, struct spinlock *lk)
 {
@@ -631,16 +638,21 @@ sleep(void *chan, struct spinlock *lk)
   // (wakeup locks p->lock),
   // so it's okay to release lk.
 
+  // 获取进程对应的锁, 从而改变进程的状态
   acquire(&p->lock);  //DOC: sleeplock1
+  // 释放等待的锁
   release(lk);
 
   // Go to sleep.
+  // 进入休眠状态
   p->chan = chan;
   p->state = SLEEPING;
 
+  // 进行调度
   sched();
 
   // Tidy up.
+  // 这里相当于被唤醒之后
   p->chan = 0;
 
   // Reacquire original lock.
@@ -650,6 +662,7 @@ sleep(void *chan, struct spinlock *lk)
 
 // Wake up all processes sleeping on chan.
 // Must be called without any p->lock.
+// wakeup在chan上休眠的进程
 void
 wakeup(void *chan)
 {
@@ -658,7 +671,9 @@ wakeup(void *chan)
   for(p = proc; p < &proc[NPROC]; p++) {
     if(p != myproc()){
       acquire(&p->lock);
+      // 相当于唤醒休眠的进程
       if(p->state == SLEEPING && p->chan == chan) {
+        // 让这个线程可以重新进行调度
         p->state = RUNNABLE;
       }
       release(&p->lock);
