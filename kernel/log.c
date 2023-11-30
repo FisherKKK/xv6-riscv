@@ -32,11 +32,13 @@
 
 // Contents of the header block, used for both the on-disk header block
 // and to keep track in memory of logged block# before commit.
+// 磁盘上和内存中的log块
 struct logheader {
   int n;
   int block[LOGSIZE];
 };
 
+// 当前日志的状态
 struct log {
   struct spinlock lock;
   int start;
@@ -123,17 +125,21 @@ recover_from_log(void)
 }
 
 // called at the start of each FS system call.
+// 在开始进行文件系统调用之前的操作
 void
 begin_op(void)
 {
+  // 在文件系统操作之前, 需要满足所有的日志已经提交
   acquire(&log.lock);
   while(1){
+    // 如果正在提交, 则休眠
     if(log.committing){
       sleep(&log, &log.lock);
-    } else if(log.lh.n + (log.outstanding+1)*MAXOPBLOCKS > LOGSIZE){
+    } else if(log.lh.n + (log.outstanding+1)*MAXOPBLOCKS > LOGSIZE){ // 日志空间已经满了
       // this op might exhaust log space; wait for commit.
       sleep(&log, &log.lock);
     } else {
+      // 可以执行fs调用
       log.outstanding += 1;
       release(&log.lock);
       break;

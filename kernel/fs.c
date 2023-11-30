@@ -247,6 +247,7 @@ iupdate(struct inode *ip)
 // Find the inode with number inum on device dev
 // and return the in-memory copy. Does not lock
 // the inode and does not read it from disk.
+// 从设备dev上读取inum对应的inode
 static struct inode*
 iget(uint dev, uint inum)
 {
@@ -262,6 +263,7 @@ iget(uint dev, uint inum)
       release(&itable.lock);
       return ip;
     }
+    // 可以理解empty是一个空的内存ip
     if(empty == 0 && ip->ref == 0)    // Remember empty slot.
       empty = ip;
   }
@@ -270,11 +272,13 @@ iget(uint dev, uint inum)
   if(empty == 0)
     panic("iget: no inodes");
 
+  // 这里相当于分配一个, 但是实际上真的inum对应的inode还没有被读取到内存中
+  // 也就是说inode现在还在磁盘上, 真正读的时候, 才会被调入内存中
   ip = empty;
   ip->dev = dev;
   ip->inum = inum;
   ip->ref = 1;
-  ip->valid = 0;
+  ip->valid = 0; // 因此这里的valid设置为0
   release(&itable.lock);
 
   return ip;
@@ -282,6 +286,7 @@ iget(uint dev, uint inum)
 
 // Increment reference count for ip.
 // Returns ip to enable ip = idup(ip1) idiom.
+// 增加inode的引用计数
 struct inode*
 idup(struct inode *ip)
 {
@@ -479,6 +484,7 @@ stati(struct inode *ip, struct stat *st)
 // otherwise, dst is a kernel address.
 // 从inode中读写数据, 首先必须要保证inode锁被获取, 根据user_dist决定是否
 // 读取到用户空间还是内核空间
+// TODO: NOT YET READ
 int
 readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
 {
@@ -559,6 +565,7 @@ namecmp(const char *s, const char *t)
 
 // Look for a directory entry in a directory.
 // If found, set *poff to byte offset of entry.
+// 查找ip对应目录中名称为name的子目录对应的inode
 struct inode*
 dirlookup(struct inode *dp, char *name, uint *poff)
 {
@@ -630,6 +637,7 @@ dirlink(struct inode *dp, char *name, uint inum)
 //   skipelem("a", name) = "", setting name = "a"
 //   skipelem("", name) = skipelem("////", name) = 0
 //
+// 这里就是跳过一些路径中的标识符, 返回真正的路径名
 static char*
 skipelem(char *path, char *name)
 {
@@ -659,27 +667,37 @@ skipelem(char *path, char *name)
 // If parent != 0, return the inode for the parent and copy the final
 // path element into name, which must have room for DIRSIZ bytes.
 // Must be called inside a transaction since it calls iput().
+// 寻找path的父目录, 存储到name中, 同时返回对应的父目录
+// 当前操作必须在一个事务当中
+
 static struct inode*
 namex(char *path, int nameiparent, char *name)
 {
   struct inode *ip, *next;
 
   if(*path == '/')
+    // 这里相当于是一个根目录
     ip = iget(ROOTDEV, ROOTINO);
   else
+    // 这里相当于是proc的工作路径
     ip = idup(myproc()->cwd);
-
+  // name设置当前的目录, 返回值是下一个需要解析的
+  // example: /ab/ac/ad
+  // skipelem在path为""时的返回值才为0
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
+    // 在遍历完成之前可以保证它们都是目录
     if(ip->type != T_DIR){
       iunlockput(ip);
       return 0;
     }
+    // 如果需要提取父目录
     if(nameiparent && *path == '\0'){
       // Stop one level early.
       iunlock(ip);
       return ip;
     }
+    // 查找当前目录名称为name的子目录, 其中ip为当前的目录
     if((next = dirlookup(ip, name, 0)) == 0){
       iunlockput(ip);
       return 0;
@@ -701,6 +719,7 @@ namei(char *path)
   return namex(path, 0, name);
 }
 
+// 寻找path的父目录, 将父目录存到name中
 struct inode*
 nameiparent(char *path, char *name)
 {

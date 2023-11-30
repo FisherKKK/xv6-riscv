@@ -58,6 +58,7 @@ struct dinode {
 #define DIRSIZ 14
 
 // 目录是一个文件, 包含了一系列的dirent结构
+// 目录对应的inode中包含的是dirent数组
 struct dirent {
   ushort inum;
   char name[DIRSIZ];

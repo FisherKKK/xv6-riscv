@@ -252,12 +252,19 @@ bad:
   return -1;
 }
 
+
+/**
+ * 逻辑上是创建一个文件, 底层逻辑:
+ *  * 创建一个inode
+ *  * 找到它的父目录, 将inode挂载到它的父目录
+*/
 static struct inode*
 create(char *path, short type, short major, short minor)
 {
   struct inode *ip, *dp;
   char name[DIRSIZ];
 
+  // 找到父路径
   if((dp = nameiparent(path, name)) == 0)
     return 0;
 
@@ -311,6 +318,13 @@ create(char *path, short type, short major, short minor)
   return 0;
 }
 
+/**
+ * open(filename, flag), 返回的结果是一个fd
+ * 所以整体的思路在于:
+ *  * 首先分配一个file
+ *  * 接着分配一个fd
+ *  * 将file和底层的inode进行bingding
+*/
 uint64
 sys_open(void)
 {
@@ -320,18 +334,22 @@ sys_open(void)
   struct inode *ip;
   int n;
 
+  // file的rw mode
   argint(1, &omode);
+  // filename
   if((n = argstr(0, path, MAXPATH)) < 0)
     return -1;
 
-  begin_op();
+  begin_op(); // 这一个操作是为了满足当前fs的log已经提交
 
+  // 如果创建文件
   if(omode & O_CREATE){
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
       end_op();
       return -1;
     }
+  // 读写操作
   } else {
     if((ip = namei(path)) == 0){
       end_op();

@@ -123,6 +123,7 @@ fileread(struct file *f, uint64 addr, int n)
     // 这里相当于就是调用设备的读写函数
     r = devsw[f->major].read(1, addr, n);
   } else if(f->type == FD_INODE){ // 如果读INODE
+    //TODO: 要理清楚这块逻辑就需要先处理open的系统调用
     ilock(f->ip);
     if((r = readi(f->ip, 1, addr, f->off, n)) > 0)
       f->off += r;
