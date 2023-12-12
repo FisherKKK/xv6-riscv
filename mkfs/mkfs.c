@@ -50,7 +50,7 @@ void die(const char *);
 
 // convert to riscv byte order
 // 转换为riscv的字节顺序
-//? 这里本质就是把x转换为小端法表示
+// 这里本质就是把x转换为小端法表示
 ushort
 xshort(ushort x)
 {

@@ -63,6 +63,7 @@ bzero(int dev, int bno)
 
 // Allocate a zeroed disk block.
 // returns 0 if out of disk space.
+// 分配一个磁盘块
 static uint
 balloc(uint dev)
 {
@@ -71,15 +72,18 @@ balloc(uint dev)
 
   bp = 0;
   for(b = 0; b < sb.size; b += BPB){
+    // 这里实际上是将free map block块读入内存, 因为我要分配块了, 因此我需要记录这些块的分配信息
+    // 所以遍历的过程实际上就是依次的将free map读入内存
     bp = bread(dev, BBLOCK(b, sb));
+    // 对于每一个free map block
     for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
-      m = 1 << (bi % 8);
-      if((bp->data[bi/8] & m) == 0){  // Is block free?
-        bp->data[bi/8] |= m;  // Mark block in use.
-        log_write(bp);
-        brelse(bp);
-        bzero(dev, b + bi);
-        return b + bi;
+      m = 1 << (bi % 8); // 获取对应的掩码
+      if((bp->data[bi/8] & m) == 0){  // Is block free?, 这里就是判断free map中是否是free的
+        bp->data[bi/8] |= m;  // Mark block in use. 找到了一个free block
+        log_write(bp); // 写日志
+        brelse(bp); // 释放块
+        bzero(dev, b + bi); // 将磁盘块中的内容重置
+        return b + bi; // 返回可用的磁盘块号
       }
     }
     brelse(bp);
@@ -393,31 +397,39 @@ iunlockput(struct inode *ip)
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
 // returns 0 if out of disk space.
+
+// 这个相当于inode内存存储数据的格式
+// NDIRECT + 1(4096 + 512 * 4096)
+
+// bn相当于第n个block
 static uint
 bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
   struct buf *bp;
 
+  // 当块号小于直接块的时候
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0){
-      addr = balloc(ip->dev);
+      addr = balloc(ip->dev); // 相当于没有就就进行分配块
       if(addr == 0)
         return 0;
       ip->addrs[bn] = addr;
     }
     return addr;
   }
+  // 当磁盘块号>直接块数
   bn -= NDIRECT;
 
   if(bn < NINDIRECT){
     // Load indirect block, allocating if necessary.
     if((addr = ip->addrs[NDIRECT]) == 0){
-      addr = balloc(ip->dev);
+      addr = balloc(ip->dev); // 首先分配一级间接块
       if(addr == 0)
         return 0;
       ip->addrs[NDIRECT] = addr;
     }
+    // 分配二级磁盘块
     bp = bread(ip->dev, addr);
     a = (uint*)bp->data;
     if((addr = a[bn]) == 0){
@@ -428,6 +440,7 @@ bmap(struct inode *ip, uint bn)
       }
     }
     brelse(bp);
+    // 返回对应的磁盘块的地址
     return addr;
   }
 
@@ -484,24 +497,27 @@ stati(struct inode *ip, struct stat *st)
 // otherwise, dst is a kernel address.
 // 从inode中读写数据, 首先必须要保证inode锁被获取, 根据user_dist决定是否
 // 读取到用户空间还是内核空间
-// TODO: NOT YET READ
+// 从位置为off, 读取n大小的数据
 int
 readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
 {
   uint tot, m;
   struct buf *bp;
-
+  
   if(off > ip->size || off + n < off)
     return 0;
   if(off + n > ip->size)
     n = ip->size - off;
 
   for(tot=0; tot<n; tot+=m, off+=m, dst+=m){
+    // 获取指定块的地址(磁盘块号)
     uint addr = bmap(ip, off/BSIZE);
     if(addr == 0)
       break;
+    // 读取对应的磁盘块
     bp = bread(ip->dev, addr);
     m = min(n - tot, BSIZE - off%BSIZE);
+    // 将磁盘块的数据读入用户空间或者内核空间
     if(either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1) {
       brelse(bp);
       tot = -1;
@@ -565,7 +581,7 @@ namecmp(const char *s, const char *t)
 
 // Look for a directory entry in a directory.
 // If found, set *poff to byte offset of entry.
-// 查找ip对应目录中名称为name的子目录对应的inode
+// 查找dp对应目录中名称为name的子目录对应的inode
 struct inode*
 dirlookup(struct inode *dp, char *name, uint *poff)
 {
@@ -575,7 +591,9 @@ dirlookup(struct inode *dp, char *name, uint *poff)
   if(dp->type != T_DIR)
     panic("dirlookup not DIR");
 
+  // 相当于在每一个inode查找对应name
   for(off = 0; off < dp->size; off += sizeof(de)){
+    // 将磁盘块dp的内容读入到de中
     if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
       panic("dirlookup read");
     if(de.inum == 0)
@@ -585,6 +603,7 @@ dirlookup(struct inode *dp, char *name, uint *poff)
       if(poff)
         *poff = off;
       inum = de.inum;
+      // 获取对应的inode
       return iget(dp->dev, inum);
     }
   }

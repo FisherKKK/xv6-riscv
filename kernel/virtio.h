@@ -48,9 +48,11 @@
 
 // this many virtio descriptors.
 // must be a power of two.
+// virtio对应的描述符
 #define NUM 8
 
 // a single descriptor, from the spec.
+// 单一的描述符
 struct virtq_desc {
   uint64 addr;
   uint32 len;
@@ -90,6 +92,7 @@ struct virtq_used {
 // the format of the first descriptor in a disk request.
 // to be followed by two more descriptors containing
 // the block, and a one-byte status.
+// 第一个描述符对应的磁盘请求
 struct virtio_blk_req {
   uint32 type; // VIRTIO_BLK_T_IN or ..._OUT
   uint32 reserved;

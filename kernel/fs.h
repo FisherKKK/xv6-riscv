@@ -3,7 +3,7 @@
 
 
 #define ROOTINO  1   // root i-number
-#define BSIZE 1024  // block size, 文件系统中块的大小
+#define BSIZE 1024  // block size, 文件系统中块的大小, 也就是一个数据块的字节大小
 
 // Disk layout:
 // [ boot block | super block | log | inode blocks |

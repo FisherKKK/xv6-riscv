@@ -60,6 +60,7 @@ binit(void)
 // Look through buffer cache for block on device dev.
 // If not found, allocate a buffer.
 // In either case, return locked buffer.
+// 这里相当于先找到一个磁盘缓存块, 但是当前块是不合法的, 也就是需要后期调入内存
 static struct buf*
 bget(uint dev, uint blockno)
 {
@@ -101,6 +102,7 @@ bread(uint dev, uint blockno)
 
   b = bget(dev, blockno);
   if(!b->valid) {
+    // 这里就是相当于将磁盘块调入内存
     virtio_disk_rw(b, 0);
     b->valid = 1;
   }

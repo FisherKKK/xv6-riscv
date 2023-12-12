@@ -5,6 +5,8 @@
 // qemu ... -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 //
 
+// 所以本质上这里的操作实际上就是virtual disk操作, 这里需要遵循的是它的标准编程接口
+
 #include "types.h"
 #include "riscv.h"
 #include "defs.h"
@@ -20,6 +22,7 @@
 // 内存映射io对应的寄存器地址
 #define R(r) ((volatile uint32 *)(VIRTIO0 + (r)))
 
+// 磁盘Disk对应的文件结构
 static struct disk {
   // a set (not a ring) of DMA descriptors, with which the
   // driver tells the device where to read and write individual
@@ -59,6 +62,8 @@ static struct disk {
   
 } disk;
 
+
+// 对虚拟磁盘的初始化
 void
 virtio_disk_init(void)
 {
@@ -66,6 +71,8 @@ virtio_disk_init(void)
   // 初始化vdisk对应的锁
   initlock(&disk.vdisk_lock, "virtio_disk");
 
+  // 验证disk设备是否合法, 包括如下的内容:
+  // 1.Magic Value 2. Version 3. Device ID 4. Vendor ID
   if(*R(VIRTIO_MMIO_MAGIC_VALUE) != 0x74726976 ||
      *R(VIRTIO_MMIO_VERSION) != 2 ||
      *R(VIRTIO_MMIO_DEVICE_ID) != 2 ||
@@ -78,14 +85,18 @@ virtio_disk_init(void)
   *R(VIRTIO_MMIO_STATUS) = status;
 
   // set ACKNOWLEDGE status bit
+  // 设置disk已经被acknowledge
   status |= VIRTIO_CONFIG_S_ACKNOWLEDGE;
+  // 将状态写入寄存器
   *R(VIRTIO_MMIO_STATUS) = status;
 
   // set DRIVER status bit
+  // 设置磁盘状态位
   status |= VIRTIO_CONFIG_S_DRIVER;
   *R(VIRTIO_MMIO_STATUS) = status;
 
   // negotiate features
+  // 处理磁盘的feature
   uint64 features = *R(VIRTIO_MMIO_DEVICE_FEATURES);
   features &= ~(1 << VIRTIO_BLK_F_RO);
   features &= ~(1 << VIRTIO_BLK_F_SCSI);
@@ -97,22 +108,27 @@ virtio_disk_init(void)
   *R(VIRTIO_MMIO_DRIVER_FEATURES) = features;
 
   // tell device that feature negotiation is complete.
+  // 配置以及完成feature的信号
   status |= VIRTIO_CONFIG_S_FEATURES_OK;
   *R(VIRTIO_MMIO_STATUS) = status;
 
   // re-read status to ensure FEATURES_OK is set.
+  // re-read确保状态被设置
   status = *R(VIRTIO_MMIO_STATUS);
   if(!(status & VIRTIO_CONFIG_S_FEATURES_OK))
     panic("virtio disk FEATURES_OK unset");
 
   // initialize queue 0.
+  // 初始化queue
   *R(VIRTIO_MMIO_QUEUE_SEL) = 0;
 
   // ensure queue 0 is not in use.
+
   if(*R(VIRTIO_MMIO_QUEUE_READY))
     panic("virtio disk should not be ready");
 
   // check maximum queue size.
+  // 检查队列的size
   uint32 max = *R(VIRTIO_MMIO_QUEUE_NUM_MAX);
   if(max == 0)
     panic("virtio disk has no queue 0");
@@ -120,6 +136,7 @@ virtio_disk_init(void)
     panic("virtio disk max queue too short");
 
   // allocate and zero queue memory.
+  // 分配queue的内存并进行初始化
   disk.desc = kalloc();
   disk.avail = kalloc();
   disk.used = kalloc();
@@ -130,9 +147,12 @@ virtio_disk_init(void)
   memset(disk.used, 0, PGSIZE);
 
   // set queue size.
+  // 设置queue的size
   *R(VIRTIO_MMIO_QUEUE_NUM) = NUM;
 
   // write physical addresses.
+  // 将物理地址写到磁盘的寄存器
+  //? 页的大小是4096这里为什么会>>32
   *R(VIRTIO_MMIO_QUEUE_DESC_LOW) = (uint64)disk.desc;
   *R(VIRTIO_MMIO_QUEUE_DESC_HIGH) = (uint64)disk.desc >> 32;
   *R(VIRTIO_MMIO_DRIVER_DESC_LOW) = (uint64)disk.avail;
@@ -141,13 +161,16 @@ virtio_disk_init(void)
   *R(VIRTIO_MMIO_DEVICE_DESC_HIGH) = (uint64)disk.used >> 32;
 
   // queue is ready.
+  // 队列已经就绪
   *R(VIRTIO_MMIO_QUEUE_READY) = 0x1;
 
   // all NUM descriptors start out unused.
+  // 所有的描述符都是free
   for(int i = 0; i < NUM; i++)
     disk.free[i] = 1;
 
   // tell device we're completely ready.
+  // 告诉设备已经完成了初始化
   status |= VIRTIO_CONFIG_S_DRIVER_OK;
   *R(VIRTIO_MMIO_STATUS) = status;
 
@@ -155,6 +178,7 @@ virtio_disk_init(void)
 }
 
 // find a free descriptor, mark it non-free, return its index.
+// 找到一个空闲的descriptor
 static int
 alloc_desc()
 {
@@ -200,6 +224,7 @@ free_chain(int i)
 
 // allocate three descriptors (they need not be contiguous).
 // disk transfers always use three descriptors.
+// 分配3个descriptor, 磁盘用于传输
 static int
 alloc3_desc(int *idx)
 {
@@ -214,11 +239,16 @@ alloc3_desc(int *idx)
   return 0;
 }
 
+// 从磁盘中读写对应的块
 void
 virtio_disk_rw(struct buf *b, int write)
 {
-  uint64 sector = b->blockno * (BSIZE / 512);
+  // 获取数据块对应的sector号
+  // 这里可以理解, 因为每个Sector的大小是512字节, 因此如果按照1024进行
+  // 读取的话, 那么就需要1024 / 512
+  uint64 sector = b->blockno * (BSIZE / 512); // 通过计算可以算到当前block对应的扇区号sector number
 
+  // 获取磁盘对应的锁
   acquire(&disk.vdisk_lock);
 
   // the spec's Section 5.2 says that legacy block operations use
@@ -226,11 +256,13 @@ virtio_disk_rw(struct buf *b, int write)
   // data, one for a 1-byte status result.
 
   // allocate the three descriptors.
+  // 本质上分配了三个描述符
   int idx[3];
   while(1){
     if(alloc3_desc(idx) == 0) {
       break;
     }
+    // 休眠直到存在free的desc
     sleep(&disk.free[0], &disk.vdisk_lock);
   }
 
@@ -239,6 +271,8 @@ virtio_disk_rw(struct buf *b, int write)
 
   struct virtio_blk_req *buf0 = &disk.ops[idx[0]];
 
+  // 判断写磁盘还是读磁盘
+  // 这里本质上是设置第一个描述符对应的内容
   if(write)
     buf0->type = VIRTIO_BLK_T_OUT; // write the disk
   else
@@ -246,11 +280,13 @@ virtio_disk_rw(struct buf *b, int write)
   buf0->reserved = 0;
   buf0->sector = sector;
 
+  // 设置第一个文件键描述符的内容
   disk.desc[idx[0]].addr = (uint64) buf0;
   disk.desc[idx[0]].len = sizeof(struct virtio_blk_req);
   disk.desc[idx[0]].flags = VRING_DESC_F_NEXT;
   disk.desc[idx[0]].next = idx[1];
 
+  // 设置对应数据的地址以及size
   disk.desc[idx[1]].addr = (uint64) b->data;
   disk.desc[idx[1]].len = BSIZE;
   if(write)
@@ -267,10 +303,12 @@ virtio_disk_rw(struct buf *b, int write)
   disk.desc[idx[2]].next = 0;
 
   // record struct buf for virtio_disk_intr().
+  // 已经将这个磁盘块放到了磁盘中
   b->disk = 1;
   disk.info[idx[0]].b = b;
 
   // tell the device the first index in our chain of descriptors.
+  // 设置第一个文件描述符
   disk.avail->ring[disk.avail->idx % NUM] = idx[0];
 
   __sync_synchronize();
@@ -283,6 +321,7 @@ virtio_disk_rw(struct buf *b, int write)
   *R(VIRTIO_MMIO_QUEUE_NOTIFY) = 0; // value is queue number
 
   // Wait for virtio_disk_intr() to say request has finished.
+  // 检验直到磁盘操作结束
   while(b->disk == 1) {
     sleep(b, &disk.vdisk_lock);
   }
