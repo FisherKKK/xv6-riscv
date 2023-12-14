@@ -19,6 +19,9 @@ int flags2perm(int flags)
     return perm;
 }
 
+// exec整体的思路:
+// 1. 将path对应的program载入到内存当中
+// 2. 主要需要和pagetable进行交互, 需要设置stack guard等操作
 int
 exec(char *path, char **argv)
 {
@@ -33,6 +36,7 @@ exec(char *path, char **argv)
 
   begin_op();
 
+  // 获取路径path对应的inode
   if((ip = namei(path)) == 0){
     end_op();
     return -1;
@@ -40,16 +44,20 @@ exec(char *path, char **argv)
   ilock(ip);
 
   // Check ELF header
+  // 读取inode对应的程序, 程序的格式满足elf标准形式, 这里读取程序的头
   if(readi(ip, 0, (uint64)&elf, 0, sizeof(elf)) != sizeof(elf))
     goto bad;
 
+  // 验证Magic
   if(elf.magic != ELF_MAGIC)
     goto bad;
 
+  // 为新程序创建一个页表
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
   // Load program into memory.
+  // 将程序载入内存当中, 这里程序需要满足elf文件的标准格式
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
       goto bad;
@@ -64,6 +72,7 @@ exec(char *path, char **argv)
     uint64 sz1;
     if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz, flags2perm(ph.flags))) == 0)
       goto bad;
+    // sz中保存的值就是整个内存最大的合法虚拟地址
     sz = sz1;
     if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
       goto bad;
@@ -72,22 +81,29 @@ exec(char *path, char **argv)
   end_op();
   ip = 0;
 
+  // 获取当前程序
   p = myproc();
   uint64 oldsz = p->sz;
 
   // Allocate two pages at the next page boundary.
   // Make the first inaccessible as a stack guard.
   // Use the second as the user stack.
+  // 这里相当于是最大的虚拟地址
   sz = PGROUNDUP(sz);
   uint64 sz1;
+
+  // 额外分配了两个page, 第一个page作为stack guard
   if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE, PTE_W)) == 0)
     goto bad;
   sz = sz1;
+  // 让这块page的pte不合法, 相当于是guard page
   uvmclear(pagetable, sz-2*PGSIZE);
+  // 栈顶
   sp = sz;
   stackbase = sp - PGSIZE;
 
   // Push argument strings, prepare rest of stack in ustack.
+  // 将参数压入栈中
   for(argc = 0; argv[argc]; argc++) {
     if(argc >= MAXARG)
       goto bad;
@@ -112,6 +128,7 @@ exec(char *path, char **argv)
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
   // value, which goes in a0.
+  // 保存栈指针
   p->trapframe->a1 = sp;
 
   // Save program name for debugging.
@@ -126,6 +143,7 @@ exec(char *path, char **argv)
   p->sz = sz;
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
+  // 释放原本进程的页表
   proc_freepagetable(oldpagetable, oldsz);
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
@@ -144,6 +162,7 @@ exec(char *path, char **argv)
 // va must be page-aligned
 // and the pages from va to va+sz must already be mapped.
 // Returns 0 on success, -1 on failure.
+// 将程序段载入到页表va对应的虚拟地址中
 static int
 loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz)
 {

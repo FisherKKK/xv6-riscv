@@ -268,8 +268,10 @@ create(char *path, short type, short major, short minor)
   if((dp = nameiparent(path, name)) == 0)
     return 0;
 
+  // lock当前的inode, 因为需要进行更改了
   ilock(dp);
 
+  // 如果创建的file已经被挂载
   if((ip = dirlookup(dp, name, 0)) != 0){
     iunlockput(dp);
     ilock(ip);
@@ -279,26 +281,32 @@ create(char *path, short type, short major, short minor)
     return 0;
   }
 
+  // 分配一个新的inode
   if((ip = ialloc(dp->dev, type)) == 0){
     iunlockput(dp);
     return 0;
   }
 
+  // 设置inode的详细信息
   ilock(ip);
   ip->major = major;
   ip->minor = minor;
   ip->nlink = 1;
   iupdate(ip);
 
+  // 如果inode是一个DIR
   if(type == T_DIR){  // Create . and .. entries.
     // No ip->nlink++ for ".": avoid cyclic ref count.
+    // 为目录挂载. 和 ..
     if(dirlink(ip, ".", ip->inum) < 0 || dirlink(ip, "..", dp->inum) < 0)
       goto fail;
   }
 
+  // 为父目录挂载当前目录
   if(dirlink(dp, name, ip->inum) < 0)
     goto fail;
 
+  // 增加对父目录的link
   if(type == T_DIR){
     // now that success is guaranteed:
     dp->nlink++;  // for ".."
@@ -310,6 +318,7 @@ create(char *path, short type, short major, short minor)
   return ip;
 
  fail:
+  // 如果挂载失败
   // something went wrong. de-allocate ip.
   ip->nlink = 0;
   iupdate(ip);
@@ -340,10 +349,11 @@ sys_open(void)
   if((n = argstr(0, path, MAXPATH)) < 0)
     return -1;
 
-  begin_op(); // 这一个操作是为了满足当前fs的log已经提交
+  begin_op(); // 这一个操作是为了满足当前fs的log已经提交, 可以理解这里实际上就是一个事务
 
   // 如果创建文件
   if(omode & O_CREATE){
+    // 创建文件: 本质上是创建inode, 同时将之挂载到其父目录上
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
       end_op();
@@ -351,11 +361,14 @@ sys_open(void)
     }
   // 读写操作
   } else {
+    // 找到path对应的inode
     if((ip = namei(path)) == 0){
       end_op();
       return -1;
     }
+    // 锁定对应的inode
     ilock(ip);
+    // 如果inode对应一个目录
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
@@ -363,12 +376,14 @@ sys_open(void)
     }
   }
 
+  // 如果inode是一个设备
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();
     return -1;
   }
 
+  // 分配file及其对应的fd
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
       fileclose(f);
@@ -377,6 +392,7 @@ sys_open(void)
     return -1;
   }
 
+  // 如果inode对应一个设备, 设置文件的类型
   if(ip->type == T_DEVICE){
     f->type = FD_DEVICE;
     f->major = ip->major;
@@ -384,6 +400,7 @@ sys_open(void)
     f->type = FD_INODE;
     f->off = 0;
   }
+  // 设置文件对应的内容
   f->ip = ip;
   f->readable = !(omode & O_WRONLY);
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
@@ -459,9 +476,12 @@ sys_chdir(void)
   return 0;
 }
 
+// exec操作表示将指定的程序调入内存并执行
 uint64
 sys_exec(void)
-{
+{ 
+  // 第一个参数是磁盘上的path
+  // 第二个参数是对应的参数
   char path[MAXPATH], *argv[MAXARG];
   int i;
   uint64 uargv, uarg;
@@ -471,6 +491,7 @@ sys_exec(void)
     return -1;
   }
   memset(argv, 0, sizeof(argv));
+  // 整体相当于获取对应的所有参数
   for(i=0;; i++){
     if(i >= NELEM(argv)){
       goto bad;
@@ -489,6 +510,7 @@ sys_exec(void)
       goto bad;
   }
 
+  // 将path的程序调入内存, 参数为argv
   int ret = exec(path, argv);
 
   for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)

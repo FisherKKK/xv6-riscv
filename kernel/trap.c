@@ -66,6 +66,7 @@ usertrap(void)
     // so enable only now that we're done with those registers.
     intr_on();
 
+    // 这里相当于进行系统调用了
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
@@ -75,8 +76,9 @@ usertrap(void)
     setkilled(p);
   }
 
+  // 这里相当于判断进程是否已经killed
   if(killed(p))
-    exit(-1);
+    exit(-1); // 进程退出
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)

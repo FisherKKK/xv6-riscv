@@ -684,6 +684,7 @@ wakeup(void *chan)
 // Kill the process with the given pid.
 // The victim won't exit until it tries to return
 // to user space (see usertrap() in trap.c).
+// kill的操作实际上被usertrap处理
 int
 kill(int pid)
 {
@@ -691,8 +692,10 @@ kill(int pid)
 
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
+    // 找到指定的pid对应的进程
     if(p->pid == pid){
       p->killed = 1;
+      // 如果进程在休眠, 就将其唤醒
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;

@@ -3,6 +3,7 @@
 #define ELF_MAGIC 0x464C457FU  // "\x7FELF" in little endian
 
 // File header
+// 程序的文件头
 struct elfhdr {
   uint magic;  // must equal ELF_MAGIC
   uchar elf[12];
@@ -22,6 +23,7 @@ struct elfhdr {
 };
 
 // Program section header
+// 程序的section部分
 struct proghdr {
   uint32 type;
   uint32 flags;

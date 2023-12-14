@@ -8,6 +8,7 @@
 #include "defs.h"
 
 // Fetch the uint64 at addr from the current process.
+// 将用户空间addr上对应的地址拷贝到内核空间
 int
 fetchaddr(uint64 addr, uint64 *ip)
 {
@@ -21,6 +22,7 @@ fetchaddr(uint64 addr, uint64 *ip)
 
 // Fetch the nul-terminated string at addr from the current process.
 // Returns length of string, not including nul, or -1 for error.
+// 从用户空间copy对应的字符串
 int
 fetchstr(uint64 addr, char *buf, int max)
 {

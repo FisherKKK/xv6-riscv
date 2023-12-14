@@ -70,6 +70,9 @@ sys_sleep(void)
   return 0;
 }
 
+// kill一个进程, 核心思路:
+// 1. 设置进程的状态killed
+// 2. 让操作系统在usertrap中处理killed进程
 uint64
 sys_kill(void)
 {
